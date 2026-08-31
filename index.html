@@ -7,7 +7,20 @@
   <meta name="description" content="เว็บไซต์ร้านหนังสือสไตล์ภาพประกอบ พร้อมใช้งานบน GitHub Pages" />
   <title>เว็บไซต์ตัวอย่าง</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://script.google.com" crossorigin>
+  <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+  <script>
+    // เริ่มโหลดข้อมูลหลักตั้งแต่ <head> ไม่ต้องรอ JavaScript ด้านล่างหน้า
+    window.__SITE_HOMEFAST_PREFETCH = fetch(
+      'https://script.google.com/macros/s/AKfycbwpl3e274_r8yowUUztZ_wK7eBpIShu_SPF5QlCF-us_1Z6jixlmjFA6Zmgh7Y0MlJS/exec?mode=homefast',
+      { method: 'GET', cache: 'default', credentials: 'omit' }
+    ).then(function (response) {
+      return response.ok ? response.json() : null;
+    }).catch(function () { return null; });
+  </script>
   <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
   #websiteHeroOverlay {
@@ -20,6 +33,12 @@
     visibility: visible;
     transition: opacity 0.25s ease;
   }
+
+    /* ลดงาน layout/paint ของส่วนล่างที่ยังไม่อยู่ในจอ */
+    #learningSourceBox, #activityBox, #FBpostBox, #cliproomBox, #learningBaseModule {
+      content-visibility: auto;
+      contain-intrinsic-size: 1px 620px;
+    }
 </style>
 <link rel="stylesheet" href="style.css?v=20260828-register-1" />
   <link rel="stylesheet" href="announcement.css?v=20260824-1" />
@@ -45,12 +64,14 @@
   </style>
   <link rel="stylesheet" href="profile-box.css?v=20260828-register-login-effect-1" />
 <link rel="stylesheet" href="student-box.css?v=20260817-1" />
-  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <link
   rel="stylesheet"
-  href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
+  href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css"
+  media="print" onload="this.media='all'">
   <link rel="stylesheet"
-      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
+      media="print" onload="this.media='all'">
 </head>
 <body class="website-data-loading">
   <div id="adminLoginModal" class="admin-login-modal" hidden>
@@ -594,23 +615,23 @@
     <div class="copyright">© 2026 Mintana. All rights reserved.</div>
   </footer>
 
-<script src="script.js?v=20260823-1"></script>
-<script src="announcement.js?v=20260824-1"></script>
-<script src="site-content.js?v=20260824-1"></script>
-<script src="admin-mode.js?v=20260826-1"></script>
-<script src="admin-section-guide.js?v=20260827-1"></script>
-<script src="home-summary.js?v=20260824-3"></script>
-<script src="profile-config.js?v=20260821-1"></script>
-<script src="student-profile-login.js?v=20260821-6"></script>
-<script src="student-service-ranking.js?v=20260823-1"></script>
-<script src="user-box.js?v=20260818-2"></script>
-<script src="learning-source-box.js?v=20260819-2"></script>
-  <script src="activity-box.js?v=20260826-6"></script>
-  <script src="fbpost-box.js?v=20260826-7"></script>
-  <script src="boss-box.js?v=20260723-2"></script>
-  <script src="bus-box.js?v=20260723-1"></script>
-  <script src="cliproom-box.js?v=20260815-3"></script>
-  <script src="shopactivity-box.js?v=20260815-1"></script>
+<script defer src="site-fast-data.js?v=20260830-fast-2"></script>
+<script defer src="script.js?v=20260830-fast-1"></script>
+<script defer src="announcement.js?v=20260824-1"></script>
+<script defer src="site-content.js?v=20260824-1"></script>
+<script defer src="admin-mode.js?v=20260826-1"></script>
+<script defer src="admin-section-guide.js?v=20260827-1"></script>
+<script defer src="home-summary.js?v=20260830-fast-2"></script>
+<script defer src="profile-config.js?v=20260821-1"></script>
+<script defer src="student-profile-login.js?v=20260830-login-fast-2"></script>
+<script defer src="student-service-ranking.js?v=20260830-fast-2"></script>
+<script defer src="user-box.js?v=20260818-2"></script>
+<script defer src="learning-source-box.js?v=20260819-2"></script>
+  <script defer src="activity-box.js?v=20260826-6"></script>
+  <script defer src="fbpost-box.js?v=20260826-7"></script>
+  <script defer src="boss-box.js?v=20260723-2"></script>
+  <script defer src="cliproom-box.js?v=20260815-3"></script>
+  <script defer src="shopactivity-box.js?v=20260815-1"></script>
 
 <!-- Student Modal -->
 <div id="studentModal" class="learning-modal">
@@ -891,8 +912,8 @@
 <!-- Popup รายละเอียดหนังสือ -->
 </div>
 
-  <script src="learning-base.js?v=20260828-register-login-effect-1"></script>
-  <script src="profile-box.js?v=20260731-1"></script>
+  <script defer src="learning-base.js?v=20260828-register-login-effect-1"></script>
+  <script defer src="profile-box.js?v=20260731-1"></script>
 
   
 
