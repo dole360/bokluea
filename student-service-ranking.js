@@ -112,14 +112,22 @@
     }
 
     try {
-      const separator = STUDENT_SERVICE_API_URL.includes('?') ? '&' : '?';
-      const response = await fetch(
-        `${STUDENT_SERVICE_API_URL}${separator}mode=studentServiceTop3&_t=${Date.now()}`,
-        { method: 'GET', cache: 'no-store' }
-      );
-
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const result = await response.json();
+      let result;
+      if (window.SiteFast) {
+        result = await window.SiteFast.fetchMode(
+          'studentServiceTop3',
+          {},
+          { key: 'studentServiceTop3:v2', ttl: CACHE_AGE }
+        );
+      } else {
+        const separator = STUDENT_SERVICE_API_URL.includes('?') ? '&' : '?';
+        const response = await fetch(
+          `${STUDENT_SERVICE_API_URL}${separator}mode=studentServiceTop3`,
+          { method: 'GET', cache: 'default' }
+        );
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        result = await response.json();
+      }
       if (!result || (!result.worksheet && !result.quiz)) {
         throw new Error('รูปแบบข้อมูลไม่ถูกต้อง');
       }
@@ -146,5 +154,15 @@
     if (rankingData) renderAll(LEVELS[activeLevelIndex]);
   });
 
-  document.addEventListener('DOMContentLoaded', loadRankings);
+  function scheduleRankings() {
+    if (window.SiteFast) window.SiteFast.whenNear('studentServicesBox', loadRankings, '700px 0px');
+    else if ('requestIdleCallback' in window) requestIdleCallback(loadRankings, { timeout: 2200 });
+    else setTimeout(loadRankings, 500);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', scheduleRankings, { once: true });
+  } else {
+    scheduleRankings();
+  }
 })();

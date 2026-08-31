@@ -27,14 +27,17 @@
 
   async function loadSiteContent() {
     try {
-      const url = new URL(API_URL);
-      url.searchParams.set('mode', 'aboutPages');
-      url.searchParams.set('_t', Date.now());
+      let result;
 
-      const response = await fetch(url.toString(), { cache: 'no-store' });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-      const result = await response.json();
+      if (window.SiteFast) {
+        result = Object.assign({ success: true }, await window.SiteFast.homePart('about'));
+      } else {
+        const url = new URL(API_URL);
+        url.searchParams.set('mode', 'aboutPages');
+        const response = await fetch(url.toString(), { cache: 'default' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        result = await response.json();
+      }
       if (result.success === false) {
         throw new Error(result.message || 'โหลดข้อความเว็บไซต์ไม่สำเร็จ');
       }

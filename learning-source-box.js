@@ -232,6 +232,17 @@ function areaCard(area) {
       return;
     }
 
+    if (window.SiteFast) {
+      grid.innerHTML = '<div class="lsb-loading">กำลังโหลดแหล่งเรียนรู้...</div>';
+      window.SiteFast.fetchMode('learningAreas', {}, { key: 'learning-areas-v1', ttl: 300000 })
+        .then(window.receiveLearningAreas)
+        .catch(error => {
+          console.error('Learning Areas API:', error);
+          grid.innerHTML = '<div class="lsb-loading">ไม่สามารถเชื่อมต่อข้อมูลได้</div>';
+        });
+      return;
+    }
+
 
     document
       .getElementById('lsbAreaJsonp')
@@ -309,7 +320,9 @@ function areaCard(area) {
   });
 
 
-  if (document.readyState === 'loading') {
+  if (window.SiteFast) {
+    window.SiteFast.whenNear('learningSourceBox', loadLearningAreas);
+  } else if (document.readyState === 'loading') {
 
     document.addEventListener(
       'DOMContentLoaded',

@@ -891,11 +891,15 @@ async function loadMyTotalHours() {
 
   async function loadSetting() {
     try {
-      const url = new URL(API_URL);
-      url.searchParams.set('mode', 'setting');
-      url.searchParams.set('_t', Date.now());
-      const response = await fetch(url.toString(), { cache: 'no-store' });
-      const json = await response.json();
+      let json;
+      if (window.SiteFast) {
+        json = { success: true, data: await window.SiteFast.homePart('setting') };
+      } else {
+        const url = new URL(API_URL);
+        url.searchParams.set('mode', 'setting');
+        const response = await fetch(url.toString(), { cache: 'default' });
+        json = await response.json();
+      }
       if (json?.success !== false) {
         const setting = json?.data || json || {};
         hourText = String(setting?.hourText || 'ชั่วโมง').trim() || 'ชั่วโมง';

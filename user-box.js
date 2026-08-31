@@ -99,9 +99,14 @@
     if (!track) return;
 
     try {
-      const response = await fetch(API_URL + '&_t=' + Date.now(), { cache: 'no-store' });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const result = await response.json();
+      let result;
+      if (window.SiteFast) {
+        result = await window.SiteFast.fetchMode('usercards', {}, { key: 'usercards-v1', ttl: 180000 });
+      } else {
+        const response = await fetch(API_URL, { cache: 'default' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        result = await response.json();
+      }
       if (result.success === false) throw new Error(result.message || 'โหลดข้อมูลไม่สำเร็จ');
       users = Array.isArray(result.users) ? result.users : [];
       renderUsers();
@@ -155,6 +160,7 @@
       if (document.hidden) stopAutoSlide();
       else startAutoSlide();
     });
-    loadUsers();
+    if (window.SiteFast) window.SiteFast.whenNear('userBox', loadUsers);
+    else loadUsers();
   });
 })();

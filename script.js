@@ -62,19 +62,15 @@
 
 async function loadWebsiteImages() {
   try {
-    const response = await fetch(
-      IMAGE_API_URL + '&_t=' + Date.now(),
-      {
-        method: 'GET',
-        cache: 'no-store'
-      }
-    );
+    let result;
 
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+    if (window.SiteFast) {
+      result = Object.assign({ success: true }, await window.SiteFast.homePart('images'));
+    } else {
+      const response = await fetch(IMAGE_API_URL, { method: 'GET', cache: 'default' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      result = await response.json();
     }
-
-    const result = await response.json();
 
     if (result.success === false) {
       throw new Error(
@@ -382,14 +378,15 @@ function renderSettingMenus(items) {
     if (!slider || !slidesBox) return;
 
     try {
-      const response = await fetch(
-        NEWS_API_URL + '&_t=' + Date.now(),
-        { cache: 'no-store' }
-      );
+      let result;
 
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-      const result = await response.json();
+      if (window.SiteFast) {
+        result = Object.assign({ success: true }, await window.SiteFast.homePart('news'));
+      } else {
+        const response = await fetch(NEWS_API_URL, { cache: 'default' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        result = await response.json();
+      }
       if (result.success === false) {
         throw new Error(result.message || 'โหลดข่าวสารไม่สำเร็จ');
       }
@@ -612,5 +609,8 @@ async function openNewsPopup(item) {
     loadNews();
 
   });
-  document.addEventListener('news-admin-updated', loadNews);
+  document.addEventListener('news-admin-updated', () => {
+    window.SiteFast?.clear('homefast');
+    loadNews();
+  });
 })();
