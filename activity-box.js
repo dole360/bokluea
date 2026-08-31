@@ -114,19 +114,15 @@ async function loadActivities() {
   const status = document.getElementById('activityBoxStatus');
 
   try {
-    const response = await fetch(
-      ACTIVITY_API_URL + '&_t=' + Date.now(),
-      {
-        method: 'GET',
-        cache: 'no-store'
-      }
-    );
+    let result;
 
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+    if (window.SiteFast) {
+      result = { success: true, activities: await window.SiteFast.homePart('activity') };
+    } else {
+      const response = await fetch(ACTIVITY_API_URL, { method: 'GET', cache: 'default' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      result = await response.json();
     }
-
-    const result = await response.json();
 
     if (!result.success) {
       throw new Error(
@@ -154,5 +150,8 @@ state.items = (result.activities || [])
 }
 
   document.addEventListener('DOMContentLoaded', loadActivities);
-  document.addEventListener('activity-admin-updated', loadActivities);
+  document.addEventListener('activity-admin-updated', () => {
+    window.SiteFast?.clear('homefast');
+    loadActivities();
+  });
 })();

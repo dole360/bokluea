@@ -126,14 +126,14 @@
     if (!status || !grid) return;
 
     try {
-      const response = await fetch(API_URL + '&_t=' + Date.now(), {
-        method:'GET',
-        cache:'no-store'
-      });
-
-      if (!response.ok) throw new Error('HTTP ' + response.status);
-
-      const result = await response.json();
+      let result;
+      if (window.SiteFast) {
+        result = await window.SiteFast.fetchMode('facebook', {}, { key: 'facebook-home-v1', ttl: 180000 });
+      } else {
+        const response = await fetch(API_URL, { method:'GET', cache:'default' });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        result = await response.json();
+      }
       if (result.success === false) {
         throw new Error(result.message || 'โหลดข้อมูลไม่สำเร็จ');
       }
@@ -152,6 +152,9 @@
     if (grid) scaleFacebookFrames(grid);
   });
 
-  document.addEventListener('DOMContentLoaded', load);
+  document.addEventListener('DOMContentLoaded', () => {
+    if (window.SiteFast) window.SiteFast.whenNear('FBpostBox', load);
+    else load();
+  });
   document.addEventListener('facebook-admin-updated', load);
 })();

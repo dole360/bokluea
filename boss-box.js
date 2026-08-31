@@ -122,13 +122,15 @@
 
   async function loadBoss() {
     try {
-      const response = await fetch(BOSS_API_URL + '&_t=' + Date.now(), {
-        method: 'GET',
-        cache: 'no-store'
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      let result;
 
-      const result = await response.json();
+      if (window.SiteFast) {
+        result = { success: true, boss: await window.SiteFast.homePart('boss') };
+      } else {
+        const response = await fetch(BOSS_API_URL, { method: 'GET', cache: 'default' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        result = await response.json();
+      }
       if (result.success === false) throw new Error(result.message || 'โหลดข้อมูลผู้บริหารไม่สำเร็จ');
 
       const boss = normalizeBoss(result);

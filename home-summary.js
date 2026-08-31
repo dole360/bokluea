@@ -34,9 +34,9 @@
     try {
       const url = new URL(API_URL);
       url.searchParams.set('mode', 'homeSummary');
-      url.searchParams.set('_t', Date.now());
-
-      const response = await fetch(url.toString(), { cache: 'no-store' });
+      const response = window.SiteFast
+        ? await window.SiteFast.fetchMode('homeSummary', {}, { key: '', ttl: 0 }).then(data => ({ ok: true, json: async () => data }))
+        : await fetch(url.toString(), { cache: 'default' });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
       const result = await response.json();
@@ -53,5 +53,15 @@
     }
   }
 
-  document.addEventListener('DOMContentLoaded', loadHomeSummary);
+  function scheduleHomeSummary() {
+    const run = () => loadHomeSummary();
+    if ('requestIdleCallback' in window) requestIdleCallback(run, { timeout: 1800 });
+    else setTimeout(run, 250);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', scheduleHomeSummary, { once: true });
+  } else {
+    scheduleHomeSummary();
+  }
 })();

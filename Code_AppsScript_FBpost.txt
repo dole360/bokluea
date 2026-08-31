@@ -1,6 +1,6 @@
 
-const WEBSITE_SPREADSHEET_ID = '1JPpLWaO5Ci2tiWmImsE5ct9ec_VzrfbDNZEVDLR5mSA';  //อำเภอ
-const ADMIN_LOGIN_SPREADSHEET_ID = '1o6KqoyBVNNQ8YnEGsNy68iL49YKKLunQ7fLkeDTr8-g';
+const WEBSITE_SPREADSHEET_ID = '1ew_J1mCK5OUuHF6mh9LqUcw5VeznnBTMv-QZoaQJHms';  //อำเภอ
+const ADMIN_LOGIN_SPREADSHEET_ID = '1hhOJLyKq9J4O7kbCg3u0MzgvnURi8m7V2FNEkrSjSHE';
 const WEBSITE_IMAGE_SHEET = 'website_image';
 const NEWS_SHEET_NAME = 'news_page';
 const BOOK_SHEET_NAME = 'book';
@@ -75,6 +75,21 @@ function doGet(e) {
     return doGetReport_(e);
   }
 
+
+  // โหลดข้อมูลหลักของ index.html ในคำขอเดียว
+  if (mode === 'homefast') {
+    try {
+      return jsonOutput_({
+        success: true,
+        data: getHomeFastDataCached_(String(p.fresh || '') === '1')
+      }, callback);
+    } catch (err) {
+      return jsonOutput_({
+        success: false,
+        message: err.message
+      }, callback);
+    }
+  }
 
   // รวมระบบแหล่งเรียนรู้เข้ากับ Web App หลัก โดยไม่ทับ doGet เดิม
   const learningSourceModes = [
@@ -385,22 +400,187 @@ if (mode === 'team') {
   });
 }
 
+function getHomeFastDataCached_(forceRefresh) {
+  const cache = CacheService.getScriptCache();
+  const key = 'HOME_FAST_INDEX_V3';
+
+  if (!forceRefresh) {
+    const cached = cache.get(key);
+    if (cached) {
+      try { return JSON.parse(cached); } catch (ignore) {}
+    }
+  }
+
+  const data = getHomeFastData_();
+  try { cache.put(key, JSON.stringify(data), 120); } catch (ignore) {}
+  return data;
+}
+
+function clearHomeFastCache_() {
+  try {
+    CacheService.getScriptCache().removeAll([
+      'HOME_FAST_INDEX_V3',
+      'HOME_SUMMARY_COUNTS_V3',
+      'STUDENT_SERVICE_TOP3_V2'
+    ]);
+  } catch (ignore) {}
+}
+
+function getHomeFastData_() {
+  // สำคัญ: เปิด Spreadsheet หลักครั้งเดียว และอ่านแต่ละชีตเป็นช่วงก้อนใหญ่
+  const ss = SpreadsheetApp.openById(WEBSITE_SPREADSHEET_ID);
+  const result = {
+    images: { settingMenus: [], mainNavMenus: { districts: [], libraries: [] } },
+    about: { contact: {}, hero: {}, footer: {} },
+    news: { mode: 'none', slides: [] },
+    activity: [],
+    boss: { image: '', name: '', position: '', popupImage: '', popupUrl: '', popupMode: 'none' },
+    setting: { hourText: 'ชั่วโมง', headerImage: '' }
+  };
+
+  const imageSheet = ss.getSheetByName(WEBSITE_IMAGE_SHEET);
+  if (imageSheet) {
+    const imageValues = imageSheet.getRange('B2:B6').getDisplayValues().flat();
+    result.images.brandIcon = String(imageValues[0] || '').trim();
+    result.images.siteTitle = String(imageValues[1] || '').trim();
+    result.images.heroImage = String(imageValues[2] || '').trim();
+    result.images.heroTitle1 = String(imageValues[3] || '').trim();
+    result.images.heroTitle2 = String(imageValues[4] || '').trim();
+  }
+
+  const settingSheet = ss.getSheetByName('setting');
+  if (settingSheet) {
+    const lastRow = Math.max(7, settingSheet.getLastRow());
+    const rows = settingSheet.getRange(2, 2, lastRow - 1, 19).getDisplayValues(); // B:T
+    const value = function(rowIndex, colIndex) {
+      return String((rows[rowIndex] && rows[rowIndex][colIndex]) || '').trim();
+    };
+
+    result.setting.hourText = value(0, 0) || 'ชั่วโมง';
+    result.setting.headerImage = value(1, 0);
+
+    result.images.settingMenus = rows.map(function(row) {
+      return {
+        title: String(row[2] || '').trim(),
+        subtitle: String(row[3] || '').trim(),
+        icon: String(row[4] || '').trim()
+      };
+    }).filter(function(item) {
+      return item.title || item.subtitle || item.icon;
+    }).slice(0, 6);
+
+    const districts = [];
+    const libraries = [];
+    rows.forEach(function(row) {
+      const districtName = String(row[6] || '').trim();
+      const districtUrl = String(row[7] || '').trim();
+      const libraryName = String(row[8] || '').trim();
+      const libraryUrl = String(row[9] || '').trim();
+      if (districtName && districtUrl) districts.push({ name: districtName, url: districtUrl });
+      if (libraryName && libraryUrl) libraries.push({ name: libraryName, url: libraryUrl });
+    });
+    result.images.mainNavMenus = { districts: districts, libraries: libraries };
+
+    const organization = value(0, 12); // N2
+    const heroTitle = value(1, 18);    // T3
+    result.about = {
+      contact: {
+        organization: organization,
+        coordinate: value(1, 12),
+        address: value(2, 12),
+        phone: value(3, 12),
+        facebook: value(4, 12),
+        line: value(5, 12)
+      },
+      hero: {
+        kicker: value(0, 18),
+        title: heroTitle,
+        description: value(2, 18)
+      },
+      footer: {
+        organization: organization,
+        address: value(2, 12),
+        phone: value(3, 12),
+        description: heroTitle
+      }
+    };
+  }
+
+  const newsSheet = ss.getSheetByName(NEWS_SHEET_NAME);
+  if (newsSheet) {
+    const lastRow = Math.max(1, newsSheet.getLastRow());
+    const rows = newsSheet.getRange(1, 2, lastRow, 9).getDisplayValues(); // B:J
+    const mode = String((rows[0] && rows[0][8]) || 'none').trim().toLowerCase();
+    let slides = rows.slice(1).map(function(row, index) {
+      return {
+        newsNo: index + 1,
+        title: String(row[0] || '').trim(),
+        image: String(row[1] || '').trim(),
+        detail: String(row[2] || '').trim(),
+        detailUrl: String(row[3] || '').trim(),
+        date: String(row[4] || '').trim()
+      };
+    }).filter(function(item) { return item.image !== ''; });
+    if (mode !== 'block' && slides.length > 1) slides = slides.slice(0, 1);
+    result.news = { mode: mode === 'block' ? 'block' : 'none', slides: slides };
+  }
+
+  const activitySheet = ss.getSheetByName('activity');
+  if (activitySheet && activitySheet.getLastRow() >= 2) {
+    result.activity = activitySheet
+      .getRange(2, 1, activitySheet.getLastRow() - 1, 4)
+      .getDisplayValues()
+      .filter(function(row) {
+        return row.some(function(v) { return String(v || '').trim() !== ''; });
+      })
+      .reverse()
+      .map(function(row) {
+        return {
+          title: String(row[0] || '').trim(),
+          image: String(row[1] || '').trim(),
+          url: String(row[2] || '').trim(),
+          date: String(row[3] || '').trim()
+        };
+      });
+  }
+
+  const bossSheet = ss.getSheetByName(BOSS_SHEET_NAME);
+  if (bossSheet) {
+    const bossRows = bossSheet.getRange(2, 2, 2, 7).getDisplayValues(); // B2:H3
+    result.boss = {
+      image: String((bossRows[0] && bossRows[0][2]) || '').trim(),   // D2
+      name: String((bossRows[0] && bossRows[0][0]) || '').trim(),    // B2
+      position: String((bossRows[0] && bossRows[0][1]) || '').trim(),// C2
+      popupImage: String((bossRows[0] && bossRows[0][5]) || '').trim(), // G2
+      popupUrl: String((bossRows[1] && bossRows[1][5]) || '').trim(),   // G3
+      popupMode: String((bossRows[0] && bossRows[0][6]) || 'none').trim().toLowerCase() // H2
+    };
+  }
+
+  return result;
+}
+
 function getHomeSummaryData_() {
+  // ตัวนับเว็บไซต์ยังเพิ่มทุกครั้ง แต่ข้อมูลหนักอื่น cache ไว้
   const websiteVisitCount = incrementWebsiteVisitCount_();
+  const cache = CacheService.getScriptCache();
+  const cacheKey = 'HOME_SUMMARY_COUNTS_V3';
+  const cached = cache.get(cacheKey);
+
+  if (cached) {
+    try {
+      const data = JSON.parse(cached);
+      data.websiteVisitCount = websiteVisitCount;
+      return data;
+    } catch (ignore) {}
+  }
+
   const ssMain = SpreadsheetApp.openById(WEBSITE_SPREADSHEET_ID);
   const shUser = ssMain.getSheetByName('user');
 
-  let userTotal = 0;
-  let userPrimary = 0;
-  let userMiddle = 0;
-  let userHigh = 0;
-
+  let userTotal = 0, userPrimary = 0, userMiddle = 0, userHigh = 0;
   if (shUser && shUser.getLastRow() >= 2) {
-    const userRows = shUser
-      .getRange(2, 9, shUser.getLastRow() - 1, 4)
-      .getValues(); // I:L
-
-    userRows.forEach(row => {
+    shUser.getRange(2, 9, shUser.getLastRow() - 1, 4).getValues().forEach(function(row) {
       userPrimary += Number(row[0]) || 0;
       userMiddle += Number(row[1]) || 0;
       userHigh += Number(row[2]) || 0;
@@ -408,53 +588,34 @@ function getHomeSummaryData_() {
     });
   }
 
-  let adminTotal = 0;
-  let adminPrimary = 0;
-  let adminMiddle = 0;
-  let adminHigh = 0;
-
+  let adminTotal = 0, adminPrimary = 0, adminMiddle = 0, adminHigh = 0;
   const settingSheet = ssMain.getSheetByName('Sheet');
   const studentSheetValue = settingSheet
     ? String(settingSheet.getRange('D12').getValue() || '').trim()
     : '';
   const studentSheetMatch = studentSheetValue.match(/\/d\/([a-zA-Z0-9-_]+)/);
-  const studentSheetId = studentSheetMatch
-    ? studentSheetMatch[1]
-    : studentSheetValue;
+  const studentSheetId = studentSheetMatch ? studentSheetMatch[1] : studentSheetValue;
 
   if (studentSheetId) {
     const ssStudent = SpreadsheetApp.openById(studentSheetId);
     const shStudent = ssStudent.getSheetByName('รายชื่อนักศึกษาทั้งหมด');
-
     if (shStudent && shStudent.getLastRow() >= 2) {
-      const adminRows = shStudent
-        .getRange(2, 2, shStudent.getLastRow() - 1, 3)
-        .getValues(); // B:D
-
-      adminRows.forEach(row => {
+      shStudent.getRange(2, 2, shStudent.getLastRow() - 1, 3).getValues().forEach(function(row) {
         const studentId = String(row[0] || '').trim();
         const level = String(row[2] || '').trim();
         if (!studentId) return;
-
         if (level === 'ประถม') adminPrimary++;
         else if (level === 'ม.ต้น') adminMiddle++;
         else if (level === 'ม.ปลาย') adminHigh++;
       });
-
       adminTotal = adminPrimary + adminMiddle + adminHigh;
     }
   }
 
-  let adminLoginCount = 0;
-  let userLoginCount = 0;
+  let adminLoginCount = 0, userLoginCount = 0;
   const shLog = ssMain.getSheetByName('Log');
-
   if (shLog && shLog.getLastRow() >= 2) {
-    const logRows = shLog
-      .getRange(2, 5, shLog.getLastRow() - 1, 1)
-      .getDisplayValues(); // E2:E
-
-    logRows.forEach(row => {
+    shLog.getRange(2, 5, shLog.getLastRow() - 1, 1).getDisplayValues().forEach(function(row) {
       const loginType = String(row[0] || '').trim();
       if (!loginType) return;
       if (loginType.toLowerCase() === 'admin') adminLoginCount++;
@@ -463,21 +624,18 @@ function getHomeSummaryData_() {
   }
 
   let registrationCount = 0;
-  const websiteSS = SpreadsheetApp.openById(WEBSITE_SPREADSHEET_ID);
-  const studentsSheet = websiteSS.getSheetByName('students');
-
+  const learningBaseSS = SpreadsheetApp.openById(DB_ID);
+  const studentsSheet = learningBaseSS.getSheetByName('students');
   if (studentsSheet && studentsSheet.getLastRow() >= 2) {
     registrationCount = studentsSheet
       .getRange(2, 1, studentsSheet.getLastRow() - 1, 1)
       .getDisplayValues()
-      .reduce((count, row) => {
+      .reduce(function(count, row) {
         return count + (String(row[0] || '').trim() ? 1 : 0);
       }, 0);
   }
 
-  const loginCount = adminLoginCount + userLoginCount;
-
-  return {
+  const data = {
     userTotal: userTotal,
     userPrimary: userPrimary,
     userMiddle: userMiddle,
@@ -487,12 +645,21 @@ function getHomeSummaryData_() {
     adminMiddle: adminMiddle,
     adminHigh: adminHigh,
     registrationCount: registrationCount,
-    loginCount: loginCount,
+    loginCount: adminLoginCount + userLoginCount,
     adminLoginCount: adminLoginCount,
     userLoginCount: userLoginCount,
     websiteVisitCount: websiteVisitCount
   };
+
+  try {
+    const cacheData = Object.assign({}, data);
+    delete cacheData.websiteVisitCount;
+    cache.put(cacheKey, JSON.stringify(cacheData), 120);
+  } catch (ignore) {}
+
+  return data;
 }
+
 /*
 รีเซต ค่าเป็น 0 เลือกฟังก์ชัน resetWebsiteVisitCount กดปุ่ม Run
 */
@@ -645,6 +812,7 @@ function saveEditWebsiteData_(editor, valuesJson) {
       throw new Error('ประเภทตารางไม่ถูกต้อง');
     }
     SpreadsheetApp.flush();
+    clearHomeFastCache_();
   } finally {
     lock.releaseLock();
   }
@@ -1657,6 +1825,7 @@ function saveNewsAdmin_(data) {
     }
     SpreadsheetApp.flush();
   } finally { lock.releaseLock(); }
+  clearHomeFastCache_();
   return true;
 }
 
@@ -1666,6 +1835,7 @@ function deleteNewsAdmin_(rowNumber) {
   if (row < 2 || row > sheet.getLastRow()) throw new Error('ไม่พบแถวข่าวนี้');
   const lock = LockService.getScriptLock(); lock.waitLock(10000);
   try { sheet.deleteRow(row); reorderNewsAdmin_(sheet); SpreadsheetApp.flush(); } finally { lock.releaseLock(); }
+  clearHomeFastCache_();
   return true;
 }
 
@@ -1683,12 +1853,14 @@ function moveNewsAdmin_(rowNumber, direction) {
     sheet.getRange(row,1,1,6).setValues(other); sheet.getRange(target,1,1,6).setValues(current);
     reorderNewsAdmin_(sheet); SpreadsheetApp.flush();
   } finally { lock.releaseLock(); }
+  clearHomeFastCache_();
   return true;
 }
 
 function setNewsAdminMode_(value) {
   const mode = String(value || '').toLowerCase() === 'block' ? 'block' : 'none';
   getNewsAdminSheet_().getRange('J1').setValue(mode);
+  clearHomeFastCache_();
   return mode;
 }
 
@@ -1731,7 +1903,7 @@ function normalizePublicImageUrl_(url) {
   return value;
 }
 
-const DB_ID = "1JPpLWaO5Ci2tiWmImsE5ct9ec_VzrfbDNZEVDLR5mSA";
+const DB_ID = "1Y7SLTX3Wb8LCnRS5UIcrvDXjlkvKpqjvNvm3GOmc3Ew"; // ฐานข้อมูลระบบฐานการเรียนรู้ / ช้อปกิจกรรม
 const LINE_CHANNEL_ACCESS_TOKEN = ""; // ถ้ายังไม่มี เว้นว่างได้
 
 
@@ -1830,6 +2002,8 @@ function setupLearningBaseSheets_() {
     "studentId", "fullname", "phone", "address", "createdAt", "photo"
   ]);
   ensureHeader_(ss.getSheetByName(SHEETS.students), "photo");
+  // Keep student phone numbers as text so leading zero is preserved.
+  ss.getSheetByName(SHEETS.students).getRange('C:C').setNumberFormat('@');
 createSheet_(ss, SHEETS.score, [
   "fullname", "phone", "address", "confirmedAt", "actualHours",
   "studentId", "activityId", "teacherId", "savedAt"
@@ -1973,6 +2147,15 @@ function registerStudent(data) {
     new Date(),
     photo
   ]);
+
+  // Google Sheets may auto-convert a phone such as 0619042117 to a number
+  // and drop the first 0. Force the newly saved phone cell to plain text.
+  const studentSheet = ss_().getSheetByName(SHEETS.students);
+  const newStudentRow = studentSheet.getLastRow();
+  studentSheet
+    .getRange(newStudentRow, 3)
+    .setNumberFormat('@')
+    .setValue(phone);
 
   return {
     ok: true,
@@ -2174,6 +2357,7 @@ function updateStudentProfile(data) {
 
   sheet
     .getRange(targetRow, phoneCol + 1)
+    .setNumberFormat('@')
     .setValue(phone);
 
   sheet
@@ -3392,6 +3576,13 @@ function clearSourceSheets_(settingSheetName,urlCell){
  * ใช้ผลคำนวณเดียวกับหน้า Dashboard เพื่อให้อันดับตรงกัน
  */
 function getStudentServiceTop3_() {
+  const cache = CacheService.getScriptCache();
+  const cacheKey = 'STUDENT_SERVICE_TOP3_V2';
+  const cached = cache.get(cacheKey);
+  if (cached) {
+    try { return JSON.parse(cached); } catch (ignore) {}
+  }
+
   const dashboard = getAllDashboardData();
   const levels = ["ประถม", "ม.ต้น", "ม.ปลาย"];
   const result = {
@@ -3403,7 +3594,6 @@ function getStudentServiceTop3_() {
 
   ["worksheet", "quiz"].forEach(function(type) {
     const report = dashboard[type] || {};
-
     if (!report.ok) {
       result.success = false;
       result[type] = { error: report.message || "โหลดข้อมูลไม่สำเร็จ" };
@@ -3425,6 +3615,7 @@ function getStudentServiceTop3_() {
     });
   });
 
+  try { cache.put(cacheKey, JSON.stringify(result), 300); } catch (ignore) {}
   return result;
 }
 
