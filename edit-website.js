@@ -267,8 +267,13 @@
       });
 
       if (modal.isConfirmed) {
+        // Forget the in-memory/local homefast payload so the new B2/B4 values
+        // cannot be replaced by an older cached hero/logo later in this page.
+        if (window.SiteFast) window.SiteFast.clear('homefast');
+        try { window.__SITE_HOMEFAST_PREFETCH = null; } catch (_) {}
+
         applyPreview(type, modal.value);
-        Swal.fire({ icon: 'success', title: 'บันทึกแล้ว', text: 'หน้าเว็บไซต์อัปเดตทันที', timer: 1500, showConfirmButton: false });
+        Swal.fire({ icon: 'success', title: 'บันทึกแล้ว', text: 'อัปโหลดรูปและอัปเดตหน้าเว็บไซต์เรียบร้อย', timer: 1700, showConfirmButton: false });
       }
     } catch (error) {
       Swal.fire({ icon: 'error', title: 'โหลดข้อมูลไม่สำเร็จ', text: error.message, confirmButtonText: 'ตกลง' });
