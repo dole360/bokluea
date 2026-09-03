@@ -2,7 +2,7 @@
   'use strict';
 
   const API_URL =
-    'https://script.google.com/macros/s/AKfycbwpl3e274_r8yowUUztZ_wK7eBpIShu_SPF5QlCF-us_1Z6jixlmjFA6Zmgh7Y0MlJS/exec';
+    'https://script.google.com/macros/s/AKfycbyXsJFFE2bgVPmKmo0BYyHawpf9NuWizMgtnZmFUPsVXNU0EJxeJIVcVJRxBxHZh_4D/exec';
 
   const HOMEFAST_CACHE_KEY = 'homefast-v3';
   const HOMEFAST_TTL = 2 * 60 * 1000;
