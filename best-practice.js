@@ -2,7 +2,7 @@
   'use strict';
 
   const WEB_APP_URL =
-    'https://script.google.com/macros/s/AKfycbwpl3e274_r8yowUUztZ_wK7eBpIShu_SPF5QlCF-us_1Z6jixlmjFA6Zmgh7Y0MlJS/exec';
+    'https://script.google.com/macros/s/AKfycbxwqpydnQSx2aPrQ8yJAN3P9Jkjic-8nNIlOHYFRyarrtTyb26sE_USzXNS7uk478wh8w/exec';
   const API_URL = WEB_APP_URL + '?mode=bestpractice';
 
   const escapeHtml = value => String(value ?? '')
