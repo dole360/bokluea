@@ -2,7 +2,7 @@
   'use strict';
 
   const API_URL =
-    'https://script.google.com/macros/s/AKfycbyXsJFFE2bgVPmKmo0BYyHawpf9NuWizMgtnZmFUPsVXNU0EJxeJIVcVJRxBxHZh_4D/exec';
+    'https://script.google.com/macros/s/AKfycbwnwWu2oaPUU_UUvaYtP0yP4O6cEfZ23N5vUndfFTNbJgpGWaoJaX6yZ6on7MNk2j_1/exec';
 
   const fields = {
     userTotal: 'userTotalBox',
@@ -35,7 +35,7 @@
       const url = new URL(API_URL);
       url.searchParams.set('mode', 'homeSummary');
       const response = window.SiteFast
-        ? await window.SiteFast.fetchMode('homeSummary', {}, { key: '', ttl: 0 }).then(data => ({ ok: true, json: async () => data }))
+        ? await window.SiteFast.fetchMode('homeSummary', {}, { key: 'home-summary-v4', ttl: 5 * 60 * 1000, staleTtl: 24 * 60 * 60 * 1000 }).then(data => ({ ok: true, json: async () => data }))
         : await fetch(url.toString(), { cache: 'default' });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
