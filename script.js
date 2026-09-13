@@ -2,7 +2,7 @@
   'use strict';
 
   const WEB_APP_URL =
-    'https://script.google.com/macros/s/AKfycbyXsJFFE2bgVPmKmo0BYyHawpf9NuWizMgtnZmFUPsVXNU0EJxeJIVcVJRxBxHZh_4D/exec';
+    'https://script.google.com/macros/s/AKfycbwnwWu2oaPUU_UUvaYtP0yP4O6cEfZ23N5vUndfFTNbJgpGWaoJaX6yZ6on7MNk2j_1/exec';
   const IMAGE_API_URL = WEB_APP_URL + '?mode=images';
 
   const NEWS_API_URL = WEB_APP_URL + '?mode=news';
@@ -166,6 +166,17 @@ if (heroOverlayUrl) {
 function renderMainNavMenus(data) {
   const districtBox = document.getElementById('districtMenuList');
   const libraryBox = document.getElementById('libraryMenuList');
+
+  function setToggleTitle(box, title) {
+    if (!box) return;
+    const button = box.closest('.main-nav-dropdown')?.querySelector('.main-nav-dropdown-toggle');
+    const label = String(title || '').trim();
+    if (!button || !label) return;
+    button.innerHTML = `${escapeHtml(label)} <span aria-hidden="true">▾</span>`;
+  }
+
+  setToggleTitle(districtBox, data.districtTitle || data.subdistrictTitle || 'สกร.ระดับตำบล');
+  setToggleTitle(libraryBox, data.libraryTitle || 'ห้องสมุด');
 
   function normalize(items) {
     return (Array.isArray(items) ? items : [])
