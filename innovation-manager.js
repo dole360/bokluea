@@ -1,5 +1,5 @@
 (()=>{'use strict';
-const API='https://script.google.com/macros/s/AKfycbwnwWu2oaPUU_UUvaYtP0yP4O6cEfZ23N5vUndfFTNbJgpGWaoJaX6yZ6on7MNk2j_1/exec',state={items:[],query:'',page:1};
+const API='https://script.google.com/macros/s/AKfycbwPHNhM5pAA6hu4laMzxQT3bg_6lh3ob-l_NB7HaH0cZQ_kbxOyXUVwCjjXRZyR87ke/exec',state={items:[],query:'',page:1};
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
 async function api(action,data={}){const token=sessionStorage.getItem('mysiteAdminToken')||'',r=await fetch(API,{method:'POST',cache:'no-store',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({mode:'innovationadmin',action,data,token})}),j=await r.json();if(!r.ok||!j.success)throw new Error(j.message||'ดำเนินการไม่สำเร็จ');return j.data}
 async function load(){state.items=await api('list')}
