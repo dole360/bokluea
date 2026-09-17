@@ -2,7 +2,7 @@
   'use strict';
 
   const API_URL =
-    'https://script.google.com/macros/s/AKfycbwPHNhM5pAA6hu4laMzxQT3bg_6lh3ob-l_NB7HaH0cZQ_kbxOyXUVwCjjXRZyR87ke/exec';
+    window.APP_CONFIG.EXEC_URL;
   const SEARCH_PAGES = [
     'activity.html', 'best_practice.html', 'classroom.html', 'cliproom.html',
     'contact.html', 'course.html', 'ex.html', 'innovation.html', 'learning.html',
