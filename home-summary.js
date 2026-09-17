@@ -2,7 +2,7 @@
   'use strict';
 
   const API_URL =
-    'https://script.google.com/macros/s/AKfycbwPHNhM5pAA6hu4laMzxQT3bg_6lh3ob-l_NB7HaH0cZQ_kbxOyXUVwCjjXRZyR87ke/exec';
+    window.APP_CONFIG.EXEC_URL;
 
   const fields = {
     userTotal: 'userTotalBox',

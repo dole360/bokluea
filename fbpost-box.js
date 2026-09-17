@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const API_URL = 'https://script.google.com/macros/s/AKfycbwPHNhM5pAA6hu4laMzxQT3bg_6lh3ob-l_NB7HaH0cZQ_kbxOyXUVwCjjXRZyR87ke/exec?mode=facebook';
+  const API_URL = window.APP_CONFIG.EXEC_URL + '?mode=facebook';
   const MAX_HOME_ITEMS = 4;
 
   const esc = value => String(value ?? '')
