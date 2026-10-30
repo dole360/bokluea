@@ -164,7 +164,7 @@
       SEO_DESCRIPTION: 'ห้องสมุดประชาชนรอำเภอบ่อเกลือ',
       MAIN_EXEC_URL: 'https://script.google.com/macros/s/AKfycbyGulaKAXuJd6ZMOBsktyv0N3UjoE1Hu0ha7cXpyjgGtmlA84Y09Aaf-w5tBIOOtYWz1w/exec',
       CACHE_PREFIX: 'LP360:LIBRARY:BOKLUEA:'
-    }),
+    })
   });
 
   function detectSiteKey() {
