@@ -155,7 +155,7 @@
       SEO_TITLE: "เว็บไซต์ สกร.ระดับอำเภอบ่อเกลือ",
       SEO_DESCRIPTION: "เว็บไซต์ศูนย์ส่งเสริมการเรียนรู้ระดับอำเภอบ่อเกลือ",
       MAIN_EXEC_URL: 'https://script.google.com/macros/s/AKfycbyDseNUWBuoKCGtRFroFsDWGyZt-6f7Y5VPETY8U16pjKK2mobK0ZqhEKieWwSpaqycdQ/exec',
-      STUDENT_PROFILE_EXEC_URL: 'https://script.google.com/macros/s/AKfycbwSh6yjzEbHKVTQ4yELx6tHZsHY9NSOb53IohWwt84RuCl8hDYxQYJHho-bSNmRbwxB/exec',
+      STUDENT_PROFILE_EXEC_URL: 'https://script.google.com/macros/s/AKfycbw7FH9gKUL-nst1r1s5PdGMvM1s2ZX-7hzex5NJgBIJzJKEFazg9xYYW93PlojZivfBjA/exec',
       CACHE_PREFIX: 'LP360:DISTRICT:ROOT:'
     }),
     librarylopburi1: Object.freeze({
