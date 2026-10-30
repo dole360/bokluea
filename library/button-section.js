@@ -43,7 +43,7 @@ async function publicLoad(){
   return j.data||{style:'icon-text',items:[]};
 }
 async function adminApi(action,data={}){
-  const token=sessionStorage.getItem('mysiteAdminToken')||'';
+  const token=sessionStorage.getItem('LP360:LIBRARY:mysiteAdminToken')||'';
   const r=await fetch(API,{method:'POST',cache:'no-store',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({mode:'buttonsectionadmin',action,token,data})});
   const j=await r.json();
   if(!r.ok||!j.success)throw new Error(j.message||'ดำเนินการไม่สำเร็จ');
@@ -54,7 +54,7 @@ function render(data){
   const style=normalizeStyle(data?.style);
   const items=(Array.isArray(data?.items)?data.items:[]).filter(x=>x&&x.visible!==false&&x.name&&x.url);
   if(!items.length){
-    grid.innerHTML='<div class="button-section-empty">ยังไม่มีรายการปุ่ม</div>';
+    grid.innerHTML='';
     return;
   }
   grid.innerHTML=items.map(item=>{
@@ -120,7 +120,7 @@ function managerHtml(){
       <button id="buttonManagerAdd" type="button" class="button-manager-add"><i class="fa-solid fa-plus"></i> เพิ่มปุ่ม</button>
     </div>
     <div class="button-manager-note">รูปแบบที่เลือกจะใช้กับปุ่มทุกปุ่มใน SECTION เดียวกัน ตัวอย่างตรงกลางจะแสดงปุ่มที่กำลังแก้ไข และเปลี่ยนทันทีเมื่อแก้ชื่อ สี หรือไอคอน หากยังไม่มีรายการจะแสดงโมเดลของรูปแบบปุ่มที่เลือก</div>
-    <div class="button-manager-table-wrap"><table class="button-manager-table"><thead><tr><th>ลำดับ</th><th>ชื่อปุ่ม</th><th class="button-manager-icon-column ${needsIcon(state.style)?'':'is-hidden'}">รูปภาพ/ไอคอน</th><th>URL</th><th>สีปุ่ม</th><th>สีข้อความ</th><th>แสดง</th><th>ลบ</th></tr></thead><tbody id="buttonManagerBody">${state.items.length?state.items.map(rowHtml).join(''):'<tr><td colspan="8" style="text-align:center;padding:28px">ยังไม่มีรายการปุ่ม กด + เพิ่มปุ่ม</td></tr>'}</tbody></table></div>
+    <div class="button-manager-table-wrap"><table class="button-manager-table"><thead><tr><th>ลำดับ</th><th>ชื่อปุ่ม</th><th class="button-manager-icon-column ${needsIcon(state.style)?'':'is-hidden'}">รูปภาพ/ไอคอน</th><th>URL</th><th>สีปุ่ม</th><th>สีข้อความ</th><th>แสดง</th><th>ลบ</th></tr></thead><tbody id="buttonManagerBody">${state.items.length?state.items.map(rowHtml).join(''):'<tr><td colspan="8" style="text-align:center;padding:28px">กด + เพิ่มปุ่ม เพื่อเพิ่มรายการ</td></tr>'}</tbody></table></div>
   </div>`;
 }
 function previewIconMarkup(src,isModel){

@@ -54,7 +54,7 @@
 
     if (!rows.length) {
       status.hidden = false;
-      status.textContent = 'ยังไม่มีรายการ Best Practice ในชีต best_practice';
+      status.textContent = 'ยังไม่มีรายการ Best Practice';
       slider.hidden = true;
       track.innerHTML = '';
       return;

@@ -2,7 +2,8 @@
 const API=window.APP_CONFIG.API_URL;
 const builtins=[
   {id:'featured',kind:'builtin',title:'หนังสือที่น่าสนใจ',visible:true},
-  {id:'learningSourceBox',kind:'builtin',title:'แหล่งเรียนรู้',visible:true},
+  {id:'readBookTimeBox',kind:'builtin',title:'อ่านหนังสือสะสมเวลา',visible:true},
+  {id:'learningSourceBox',kind:'builtin',title:'แหล่งส่งเสริมการอ่านในชุมชน',visible:true},
   {id:'bestPracticeBox',kind:'builtin',title:'Best Practice',visible:true},
   {id:'FBpostBox',kind:'builtin',title:'Facebook',visible:true},
   {id:'cliproomBox',kind:'builtin',title:'หลักสูตรออนไลน์',visible:true},
@@ -38,16 +39,28 @@ function normalize(items){
   const incoming=Array.isArray(items)?items:[];
   const out=[],seen=new Set();
   incoming.forEach(raw=>{const item=normalizeItem(raw);if(item&&!seen.has(item.id)){seen.add(item.id);out.push(item)}});
-  builtins.forEach(base=>{if(!seen.has(base.id))out.push({...base})});
+  builtins.forEach(base=>{if(seen.has(base.id))return;if(base.id==='readBookTimeBox'){const at=out.findIndex(item=>item.id==='featured');if(at>=0)out.splice(at+1,0,{...base});else out.unshift({...base});}else out.push({...base})});
   return out;
 }
 async function getLayout(){
+  if(window.SiteFast?.getHomeFast){
+    try{
+      const home=await window.SiteFast.getHomeFast();
+      const homeData=home?.data||home||{};
+      if(Array.isArray(homeData.sectionLayout))return normalize(homeData.sectionLayout);
+    }catch(e){console.warn('sectionLayout homefast fallback:',e)}
+  }
+  if(window.SiteFast?.fetchMode){
+    const j=await window.SiteFast.fetchMode('sectionlayout',{}, {key:'section-layout-v3',ttl:5*60*1000,staleTtl:24*60*60*1000});
+    if(j?.success===false)throw new Error(j.message||'โหลดการจัดเรียง Section ไม่สำเร็จ');
+    return normalize(j?.items||[]);
+  }
   const r=await fetch(API+'?mode=sectionlayout&_t='+Date.now(),{cache:'no-store'}),j=await r.json();
   if(!r.ok||j.success===false)throw new Error(j.message||'โหลดการจัดเรียง Section ไม่สำเร็จ');
   return normalize(j.items);
 }
 async function apiAdmin(action,data){
-  const token=sessionStorage.getItem('mysiteAdminToken')||'';
+  const token=sessionStorage.getItem('LP360:LIBRARY:mysiteAdminToken')||'';
   const r=await fetch(API,{method:'POST',cache:'no-store',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({mode:'sectionlayoutadmin',action,token,data:data||{}})}),j=await r.json();
   if(!r.ok||!j.success)throw new Error(j.message||'ดำเนินการไม่สำเร็จ');
   return j.data||{};

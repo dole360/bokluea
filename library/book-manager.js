@@ -19,7 +19,7 @@
 
   async function api(action, data = {}) {
     if (!API) throw new Error('ไม่พบ URL ของ Apps Script');
-    const token = sessionStorage.getItem('mysiteAdminToken') || '';
+    const token = sessionStorage.getItem('LP360:LIBRARY:mysiteAdminToken') || '';
     const response = await fetch(API, {
       method: 'POST',
       cache: 'no-store',
@@ -109,8 +109,8 @@
         <td class="book-manager-detail-cell" title="${esc(item.detail || '')}">${text30(item.detail)}</td>
         <td>
           <div class="book-manager-row-actions">
-            <button class="book-manager-btn book-manager-edit" type="button" data-book-edit="${item.rowNumber}"><i class="fa-solid fa-pen"></i> แก้ไข</button>
-            <button class="book-manager-btn book-manager-delete" type="button" data-book-delete="${item.rowNumber}"><i class="fa-solid fa-trash"></i> ลบ</button>
+            <button class="book-manager-btn book-manager-edit" type="button" data-book-edit="${item.rowNumber}" title="แก้ไข" aria-label="แก้ไข" style="display:inline-flex;width:38px;height:36px;padding:0;align-items:center;justify-content:center;border:0;border-radius:8px;color:#fff;cursor:pointer;vertical-align:middle;background:#f59e0b"><svg viewBox="0 0 24 24" aria-hidden="true" style="width:18px;height:18px;fill:currentColor;display:block"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm17.71-10.04a.996.996 0 0 0 0-1.41l-2.5-2.5a.996.996 0 1 0-1.41 1.41l2.5 2.5c.39.39 1.03.39 1.41 0z"/></svg></button>
+            <button class="book-manager-btn book-manager-delete" type="button" data-book-delete="${item.rowNumber}" title="ลบ" aria-label="ลบ" style="display:inline-flex;width:38px;height:36px;padding:0;align-items:center;justify-content:center;border:0;border-radius:8px;color:#fff;cursor:pointer;vertical-align:middle;background:#dc2626"><svg viewBox="0 0 24 24" aria-hidden="true" style="width:18px;height:18px;fill:currentColor;display:block"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zm3.46-7.12 1.41-1.41L12 11.59l1.12-1.12 1.41 1.41L13.41 13l1.12 1.12-1.41 1.41L12 14.41l-1.12 1.12-1.41-1.41L10.59 13l-1.13-1.12zM15.5 4l-1-1h-5l-1 1H5v2h14V4z"/></svg></button>
           </div>
         </td>
       </tr>`).join('') || '<tr><td colspan="6" class="book-manager-empty">ยังไม่มีรายการหนังสือ</td></tr>';

@@ -4,34 +4,38 @@
 (() => {
   'use strict';
 
-  const API_URL =
-    window.APP_CONFIG.API_URL;
+  const API_URL = window.APP_CONFIG.API_URL;
 
-  const HOMEFAST_CACHE_KEY = 'homefast-v8-performance';
-  const HOMEFAST_TTL = 2 * 60 * 1000;
-  const HOMEFAST_STALE_TTL = 15 * 60 * 1000;
-  const NETWORK_TIMEOUT = 15000;
+  // PERFORMANCE/RESILIENCE V10
+  // - cache-first + stale-while-revalidate
+  // - deduplicate requests
+  // - limit parallel Apps Script reads to avoid cold-start congestion
+  // - retry transient read failures until the connection succeeds
+  const HOMEFAST_CACHE_KEY = 'homefast-v15-seo-t3t4-20261004';
+  const HOMEFAST_TTL = 5 * 60 * 1000;
+  const HOMEFAST_STALE_TTL = 24 * 60 * 60 * 1000;
+  const NETWORK_TIMEOUT = 45 * 1000;
+  const MAX_CONCURRENT_READS = 2;
+  const RETRY_DELAYS = [900, 1600, 3000, 5500, 9000, 15000, 30000];
+
   const inflight = new Map();
+  const backgroundInflight = new Map();
+  const readQueue = [];
+  let activeReads = 0;
   let homeFastPromise = null;
-  let backgroundRefreshStarted = false;
 
   function isAdminMode() {
-    try {
-      return Boolean(sessionStorage.getItem('mysiteAdminToken'));
-    } catch (_) {
-      return false;
-    }
+    try { return Boolean(sessionStorage.getItem('LP360:LIBRARY:mysiteAdminToken')); }
+    catch (_) { return false; }
   }
 
   function storageRead(storage, key, maxAgeMs) {
     if (!storage || !key || !maxAgeMs || isAdminMode()) return null;
     try {
-      const saved = JSON.parse(storage.getItem('SITE_FAST:' + key) || 'null');
+      const saved = JSON.parse(storage.getItem('LP360:LIBRARY:SITE_FAST:' + key) || 'null');
       if (!saved || !saved.savedAt || Date.now() - saved.savedAt > maxAgeMs) return null;
       return saved;
-    } catch (_) {
-      return null;
-    }
+    } catch (_) { return null; }
   }
 
   function readCache(key, maxAgeMs) {
@@ -42,43 +46,191 @@
   function writeCache(key, data) {
     if (!key || isAdminMode()) return;
     const payload = JSON.stringify({ savedAt: Date.now(), data });
-    try { sessionStorage.setItem('SITE_FAST:' + key, payload); } catch (_) {}
-    try { localStorage.setItem('SITE_FAST:' + key, payload); } catch (_) {}
+    try { sessionStorage.setItem('LP360:LIBRARY:SITE_FAST:' + key, payload); } catch (_) {}
+    try { localStorage.setItem('LP360:LIBRARY:SITE_FAST:' + key, payload); } catch (_) {}
   }
 
-  function withTimeout(promise, ms, message) {
-    let timer;
-    const timeout = new Promise((_, reject) => {
-      timer = window.setTimeout(() => reject(new Error(message || 'การเชื่อมต่อใช้เวลานานเกินไป')), ms);
-    });
-    return Promise.race([promise, timeout]).finally(() => window.clearTimeout(timer));
+  // FIRST-LOAD IMAGE OPTIMIZER
+  // Google Drive/lh3 รูปต้นฉบับอาจมีหลาย MB: ขอขนาดที่เหมาะกับตำแหน่งแสดงผล
+  function fastImageUrl(value, width = 1200) {
+    const url = String(value || '').trim();
+    if (!url) return '';
+    const size = Math.max(96, Math.min(2400, Number(width) || 1200));
+    let match = url.match(/lh3\.googleusercontent\.com\/d\/([-\w]{25,})/i);
+    if (!match && /drive\.google\.com/i.test(url)) match = url.match(/[-\w]{25,}/);
+    if (!match) return url;
+    return `https://lh3.googleusercontent.com/d/${match[1]}=w${Math.round(size)}`;
   }
 
-  async function networkJson(url) {
-    const response = await withTimeout(fetch(url, {
-      method: 'GET',
-      cache: 'default',
-      credentials: 'omit'
-    }), NETWORK_TIMEOUT, 'Apps Script ใช้เวลาตอบกลับนานเกินไป');
+  function optimizeHomeFastPayload(payload) {
+    const root = payload && payload.data && typeof payload.data === 'object' ? payload.data : payload;
+    if (!root || typeof root !== 'object') return payload;
 
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const result = await response.json();
-    if (result?.success === false) throw new Error(result.message || 'โหลดข้อมูลไม่สำเร็จ');
-    return result;
+
+    if (root.images) {
+      root.images.brandIcon = fastImageUrl(root.images.brandIcon, 320);
+      root.images.heroImage = fastImageUrl(root.images.heroImage, 1800);
+      if (Array.isArray(root.images.settingMenus)) {
+        root.images.settingMenus.forEach(item => { if (item) item.icon = fastImageUrl(item.icon, 320); });
+      }
+    }
+    const slides = root.news && Array.isArray(root.news.slides) ? root.news.slides : [];
+    slides.forEach(item => { if (item) item.image = fastImageUrl(item.image, 1200); });
+    if (Array.isArray(root.activity)) {
+      root.activity.forEach(item => { if (item) item.image = fastImageUrl(item.image, 900); });
+    }
+    if (root.boss) {
+      root.boss.image = fastImageUrl(root.boss.image, 640);
+      root.boss.popupImage = fastImageUrl(root.boss.popupImage, 1400);
+    }
+    if (root.studentLogin) {
+      root.studentLogin.logo = fastImageUrl(root.studentLogin.logo, 360);
+      root.studentLogin.banner = fastImageUrl(root.studentLogin.banner, 1200);
+    }
+    return payload;
   }
 
-  async function fetchJson(url, options = {}) {
+  function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  function retryDelay(attempt) {
+    const base = RETRY_DELAYS[Math.min(Math.max(0, attempt - 1), RETRY_DELAYS.length - 1)];
+    return Math.round(base * (0.88 + Math.random() * 0.24));
+  }
+
+  async function waitForRetry(ms) {
+    if (navigator.onLine === false) {
+      await Promise.race([
+        new Promise(resolve => window.addEventListener('online', resolve, { once: true })),
+        sleep(Math.max(ms, 15000))
+      ]);
+      return;
+    }
+    if (document.visibilityState === 'hidden') {
+      await Promise.race([
+        new Promise(resolve => {
+          const onVisible = () => {
+            if (document.visibilityState !== 'visible') return;
+            document.removeEventListener('visibilitychange', onVisible);
+            resolve();
+          };
+          document.addEventListener('visibilitychange', onVisible);
+        }),
+        sleep(Math.max(ms, 10000))
+      ]);
+      return;
+    }
+    await sleep(ms);
+  }
+
+  function acquireReadSlot() {
+    if (activeReads < MAX_CONCURRENT_READS) {
+      activeReads += 1;
+      return Promise.resolve();
+    }
+    return new Promise(resolve => readQueue.push(resolve)).then(() => { activeReads += 1; });
+  }
+
+  function releaseReadSlot() {
+    activeReads = Math.max(0, activeReads - 1);
+    const next = readQueue.shift();
+    if (next) next();
+  }
+
+  function isTransientAppError(message) {
+    const text = String(message || '').toLowerCase();
+    return /timeout|timed out|temporar|try again|service invoked too many|quota|rate limit|too many|internal error|server error|ใช้เวลาตอบกลับ|ลองใหม่|ชั่วคราว/.test(text);
+  }
+
+  async function networkJsonOnce(url) {
+    await acquireReadSlot();
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), NETWORK_TIMEOUT) : null;
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        cache: 'default',
+        credentials: 'omit',
+        signal: controller ? controller.signal : undefined
+      });
+
+      if (!response.ok) {
+        const error = new Error(`HTTP ${response.status}`);
+        if (response.status >= 400 && response.status < 500 && ![408, 425, 429].includes(response.status)) {
+          error.siteFastPermanent = true;
+        }
+        throw error;
+      }
+
+      const text = await response.text();
+      let result;
+      try { result = JSON.parse(text); }
+      catch (_) { throw new Error('Apps Script ตอบกลับไม่ใช่ JSON'); }
+
+      if (result && result.success === false) {
+        const error = new Error(result.message || 'โหลดข้อมูลไม่สำเร็จ');
+        if (!isTransientAppError(error.message)) error.siteFastPermanent = true;
+        throw error;
+      }
+      return result;
+    } finally {
+      if (timer) clearTimeout(timer);
+      releaseReadSlot();
+    }
+  }
+
+  async function networkJson(url, options = {}) {
+    const forever = options.forever !== false;
+    let attempt = 0;
+    while (true) {
+      try {
+        return await networkJsonOnce(url);
+      } catch (error) {
+        if (!forever || error?.siteFastPermanent) throw error;
+        attempt += 1;
+        const delay = retryDelay(attempt);
+        console.warn(`SiteFast retry #${attempt} in ${delay}ms:`, url, error?.message || error);
+        try {
+          window.dispatchEvent(new CustomEvent('sitefast:retry', {
+            detail: { url: String(url), attempt, delay, message: String(error?.message || error || '') }
+          }));
+        } catch (_) {}
+        await waitForRetry(delay);
+      }
+    }
+  }
+
+  function refreshKeyInBackground(url, key, ttl) {
+    if (!key || isAdminMode() || backgroundInflight.has(key)) return;
+    const job = networkJson(url)
+      .then(result => { if (ttl > 0) writeCache(key, result); return result; })
+      .catch(error => console.warn('SiteFast background refresh:', key, error))
+      .finally(() => backgroundInflight.delete(key));
+    backgroundInflight.set(key, job);
+  }
+
+  function fetchJson(url, options = {}) {
     const key = String(options.key || '').trim();
     const ttl = Number(options.ttl || 0);
-    const cached = ttl > 0 ? readCache(key, ttl) : null;
-    if (cached) return cached.data;
+    const staleTtl = Number(options.staleTtl || (ttl > 0 ? Math.max(24 * 60 * 60 * 1000, ttl * 12) : 0));
+
+    const fresh = ttl > 0 && key ? readCache(key, ttl) : null;
+    if (fresh) return Promise.resolve(fresh.data);
+
+    const stale = staleTtl > 0 && key ? readCache(key, staleTtl) : null;
+    if (stale) {
+      refreshKeyInBackground(url, key, ttl);
+      return Promise.resolve(stale.data);
+    }
 
     const inflightKey = key || String(url);
     if (inflight.has(inflightKey)) return inflight.get(inflightKey);
 
     const request = networkJson(url)
       .then(result => {
-        if (ttl > 0) writeCache(key, result);
+        if (ttl > 0 && key) writeCache(key, result);
         return result;
       })
       .finally(() => inflight.delete(inflightKey));
@@ -88,55 +240,43 @@
   }
 
   function refreshHomeFastInBackground() {
-    if (backgroundRefreshStarted || isAdminMode()) return;
-    backgroundRefreshStarted = true;
-
-    const run = () => {
-      networkJson(API_URL + '?mode=homefast')
-        .then(result => writeCache(HOMEFAST_CACHE_KEY, result))
-        .catch(() => {})
-        .finally(() => { backgroundRefreshStarted = false; });
-    };
-
-    if ('requestIdleCallback' in window) {
-      requestIdleCallback(run, { timeout: 2500 });
-    } else {
-      setTimeout(run, 1200);
-    }
+    refreshKeyInBackground(API_URL + '?mode=homefast', HOMEFAST_CACHE_KEY, HOMEFAST_TTL);
   }
 
   function getHomeFast() {
     if (homeFastPromise) return homeFastPromise;
 
-    // แสดงข้อมูลจาก cache ทันที แล้ว refresh เงียบ ๆ ภายหลัง
     const fresh = readCache(HOMEFAST_CACHE_KEY, HOMEFAST_TTL);
     if (fresh) {
-      // Cache ยังสด: แสดงทันทีและไม่ยิง Apps Script ซ้ำโดยไม่จำเป็น
-      homeFastPromise = Promise.resolve(fresh.data);
+      homeFastPromise = Promise.resolve(optimizeHomeFastPayload(fresh.data));
       return homeFastPromise;
     }
 
-    // ถ้ามี cache เก่าที่ยังไม่เกิน 15 นาที ให้ใช้ก่อน เพื่อให้หน้าแสดงทันที
     const stale = readCache(HOMEFAST_CACHE_KEY, HOMEFAST_STALE_TTL);
     if (stale) {
-      homeFastPromise = Promise.resolve(stale.data);
+      homeFastPromise = Promise.resolve(optimizeHomeFastPayload(stale.data));
       refreshHomeFastInBackground();
       return homeFastPromise;
     }
 
-    // รับ promise ที่เริ่ม fetch ตั้งแต่ <head> ถ้ามี เพื่อไม่ยิงซ้ำ
     const prefetched = window.__SITE_HOMEFAST_PREFETCH;
     const request = prefetched
-      ? Promise.resolve(prefetched).then(result => {
-          if (!result || result.success === false) throw new Error(result?.message || 'homefast ไม่สำเร็จ');
-          return result;
-        })
+      ? Promise.race([
+          Promise.resolve(prefetched),
+          sleep(30000).then(() => { throw new Error('homefast prefetch timeout'); })
+        ])
+          .then(result => {
+            if (!result || result.success === false) throw new Error(result?.message || 'homefast ไม่สำเร็จ');
+            return result;
+          })
+          .catch(() => networkJson(API_URL + '?mode=homefast'))
       : networkJson(API_URL + '?mode=homefast');
 
     homeFastPromise = request
       .then(result => {
-        writeCache(HOMEFAST_CACHE_KEY, result);
-        return result;
+        const optimized = optimizeHomeFastPayload(result);
+        writeCache(HOMEFAST_CACHE_KEY, optimized);
+        return optimized;
       })
       .catch(error => {
         homeFastPromise = null;
@@ -166,7 +306,11 @@
     const mode = fallbackModes[name];
     if (!mode) return undefined;
 
-    const result = await fetchMode(mode, {}, { key: `home-part-${name}`, ttl: 120000 });
+    const result = await fetchMode(mode, {}, {
+      key: `home-part-${name}`,
+      ttl: 5 * 60 * 1000,
+      staleTtl: 24 * 60 * 60 * 1000
+    });
     if (name === 'activity') return result.activities || result.data || [];
     if (name === 'boss') return result.boss || result.data || result || {};
     if (name === 'setting') return result.data || result || {};
@@ -179,11 +323,17 @@
     Object.entries(params || {}).forEach(([key, value]) => {
       if (value !== undefined && value !== null) url.searchParams.set(key, value);
     });
-    const cacheKey = options.key || `${mode}:${JSON.stringify(params || {})}`;
-    return fetchJson(url.toString(), { key: cacheKey, ttl: options.ttl || 0 });
+    const cacheKey = Object.prototype.hasOwnProperty.call(options, 'key')
+      ? String(options.key || '')
+      : `${mode}:${JSON.stringify(params || {})}`;
+    return fetchJson(url.toString(), {
+      key: cacheKey,
+      ttl: Number(options.ttl || 0),
+      staleTtl: Number(options.staleTtl || 0)
+    });
   }
 
-  function whenNear(elementOrId, callback, rootMargin = '1100px 0px') {
+  function whenNear(elementOrId, callback, rootMargin = '700px 0px') {
     const start = () => {
       const element = typeof elementOrId === 'string'
         ? document.getElementById(elementOrId)
@@ -194,7 +344,7 @@
       const runOnce = () => {
         if (started) return;
         started = true;
-        callback();
+        Promise.resolve().then(callback).catch(error => console.warn('lazy section:', error));
       };
 
       if (!('IntersectionObserver' in window)) {
@@ -203,7 +353,7 @@
       }
 
       const rect = element.getBoundingClientRect();
-      if (rect.top < window.innerHeight + 1100) {
+      if (rect.top < window.innerHeight + 700) {
         runOnce();
         return;
       }
@@ -228,7 +378,7 @@
     [window.sessionStorage, window.localStorage].forEach(storage => {
       try {
         Object.keys(storage).forEach(key => {
-          if (!key.startsWith('SITE_FAST:')) return;
+          if (!key.startsWith('LP360:LIBRARY:SITE_FAST:')) return;
           if (!prefix || key.includes(prefix)) storage.removeItem(key);
         });
       } catch (_) {}
@@ -243,13 +393,13 @@
     getHomeFast,
     homePart,
     whenNear,
-    clear
+    clear,
+    networkJson,
+    imageUrl: fastImageUrl
   };
 
-  getHomeFast().catch(() => {});
+  getHomeFast().catch(error => console.warn('homefast initial:', error));
 })();
-
-;
 
 /* ===== script.js ===== */
 (() => {
@@ -314,6 +464,60 @@
     if (event.key === 'Escape') closeMainNavDropdowns();
   });
 
+function getHeroOverlayProgressState(overlay) {
+  if (!overlay) return null;
+  if (overlay.__heroOverlayProgressState) {
+    return overlay.__heroOverlayProgressState;
+  }
+
+  const wrap = document.createElement('div');
+  wrap.className = 'hero-image-progress-wrap';
+  wrap.setAttribute('aria-live', 'polite');
+  wrap.hidden = true;
+  wrap.innerHTML = `
+    <div class="hero-image-progress-row">
+      <span class="hero-image-progress-label">Loading...</span>
+      <strong class="hero-image-progress-percent">0%</strong>
+    </div>
+    <progress class="hero-image-progress-bar" max="100" value="0">0%</progress>
+  `;
+
+  overlay.appendChild(wrap);
+
+  overlay.__heroOverlayProgressState = {
+    wrap,
+    progress: wrap.querySelector('progress'),
+    timer: null,
+    value: 0,
+    hideTimer: null
+  };
+
+  return overlay.__heroOverlayProgressState;
+}
+
+function showHeroOverlayProgress(overlay, imageUrl) {
+  if (window.LP360HeroProgress) {
+    window.LP360HeroProgress.imageLoading(imageUrl);
+    return;
+  }
+  const state = getHeroOverlayProgressState(overlay);
+  if (!state) return;
+  state.wrap.hidden = false;
+}
+
+function finishHeroOverlayProgress(overlay, imageUrl) {
+  if (window.LP360HeroProgress) {
+    window.LP360HeroProgress.imageReady(imageUrl);
+    return;
+  }
+  const state = getHeroOverlayProgressState(overlay);
+  if (!state) return;
+  state.progress.value = 100;
+  const percent = state.wrap.querySelector('.hero-image-progress-percent');
+  if (percent) percent.textContent = '100%';
+  setTimeout(() => { state.wrap.hidden = true; }, 420);
+}
+
 async function loadWebsiteImages() {
   try {
     let result;
@@ -368,7 +572,7 @@ async function loadWebsiteImages() {
         .forEach(icon => {
           icon.textContent = '';
           icon.style.backgroundImage =
-            `url("${brandIconUrl}")`;
+            `url("${window.SiteFast?.imageUrl ? window.SiteFast.imageUrl(brandIconUrl, 320) : brandIconUrl}")`;
 
           icon.style.backgroundSize = 'cover';
           icon.style.backgroundPosition = 'center';
@@ -383,14 +587,21 @@ async function loadWebsiteImages() {
           name.textContent = brandName;
         });
 
-      document.title = brandName;
+      if (!window.__LP360_SEO_TITLE) document.title = brandName;
     }
 
 if (heroOverlayUrl) {
   const overlay = document.getElementById('websiteHeroOverlay');
 
   if (overlay) {
+    const heroFastUrl = window.SiteFast?.imageUrl
+      ? window.SiteFast.imageUrl(heroOverlayUrl, 1800)
+      : heroOverlayUrl;
     const heroImage = new Image();
+    heroImage.fetchPriority = 'high';
+    heroImage.decoding = 'async';
+
+    showHeroOverlayProgress(overlay, heroFastUrl);
 
     heroImage.onload = () => {
       overlay.style.backgroundImage =
@@ -400,21 +611,28 @@ if (heroOverlayUrl) {
           rgba(5,28,44,.79) 40%,
           rgba(5,28,44,.1) 78%
         ),
-        url("${heroOverlayUrl}")`;
+        url("${heroFastUrl}")`;
 
       overlay.style.backgroundSize = 'cover';
       overlay.style.backgroundPosition = 'center';
       overlay.style.backgroundRepeat = 'no-repeat';
 
       overlay.classList.add('website-hero-ready');
+      finishHeroOverlayProgress(overlay, heroFastUrl);
     };
 
     heroImage.onerror = () => {
       overlay.classList.add('website-hero-ready');
+      finishHeroOverlayProgress(overlay, heroFastUrl);
     };
 
-    heroImage.src = heroOverlayUrl;
+    heroImage.src = heroFastUrl;
   }
+}
+
+if (!heroOverlayUrl && window.LP360HeroProgress) {
+  // ไม่มีรูปที่กำหนดก็ถือว่างานส่วนรูปจบแล้ว เพื่อไม่ให้ progress ค้าง
+  window.LP360HeroProgress.imageReady('');
 }
 
 function renderMainNavMenus(data) {
@@ -486,7 +704,7 @@ function renderSettingMenus(items) {
       const isTeam = title.includes('บุคลากร') || title.includes('ทีมของเรา') || title === 'team';
       return !(isBestPractice || isTeam);
     })
-    .slice(0, 6);
+    ;
 
   if (!rows.length) {
     grid.innerHTML = '<div class="setting-menu-empty">ยังไม่มีข้อมูลเมนูใน setting!D2:F</div>';
@@ -507,13 +725,16 @@ function renderSettingMenus(items) {
       normalizedTitle === 'หลักสูตร';
     const isInnovation = normalizedTitle.includes('นวัตกรรม') ||
       normalizedTitle.includes('สื่อ/');
-    const href = isCourse
-      ? 'course.html'
-      : (isReward
-          ? 'reward.html'
-          : (isMedia
-              ? 'media.html'
-              : (isInnovation ? 'innovation.html' : '')));
+    const isReport = normalizedTitle.includes('รายงานผลการปฏิบัติการ');
+    const href = isReport
+      ? 'report.html'
+      : (isCourse
+          ? 'course.html'
+          : (isReward
+              ? 'reward.html'
+              : (isMedia
+                  ? 'media.html'
+                  : (isInnovation ? 'innovation.html' : ''))));
     const tag = href ? 'a' : 'div';
     const linkAttrs = href
       ? ` href="${href}" aria-label="เปิดหน้า ${escapeHtml(item.title)}"`
@@ -553,6 +774,8 @@ function renderSettingMenus(items) {
       'โหลด URL รูปภาพเว็บไซต์ไม่สำเร็จ:',
       error
     );
+    // request รูปจบด้วย error ก็ถือว่างานส่วนรูปจบ เพื่อไม่ให้ Hero progress ค้าง
+    window.LP360HeroProgress?.imageReady('');
   }
 }
 
@@ -635,7 +858,7 @@ function renderSettingMenus(items) {
     };
   }
 
-  async function loadNews() {
+  async function loadNews(forceFresh = false) {
     const slider = document.getElementById('newsSlider');
     const slidesBox = document.getElementById('newsSlides');
     if (!slider || !slidesBox) return;
@@ -643,7 +866,14 @@ function renderSettingMenus(items) {
     try {
       let result;
 
-      if (window.SiteFast) {
+      // หลังผู้ดูแลสลับแหล่งข่าว ต้องอ่าน ?mode=news สดโดยตรง
+      // เพื่อไม่ให้ homefast/prefetch ชุดที่โหลดก่อนหน้าเอาข่าวเก่ากลับมาแสดง
+      if (forceFresh) {
+        const freshUrl = NEWS_API_URL + (NEWS_API_URL.includes('?') ? '&' : '?') + '_=' + Date.now();
+        const response = await fetch(freshUrl, { cache: 'no-store', credentials: 'omit' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        result = await response.json();
+      } else if (window.SiteFast) {
         result = Object.assign({ success: true }, await window.SiteFast.homePart('news'));
       } else {
         const response = await fetch(NEWS_API_URL, { cache: 'default' });
@@ -701,6 +931,10 @@ function renderSettingMenus(items) {
         role="button"
         tabindex="${index === newsIndex ? '0' : '-1'}"
         aria-label="เปิดรายละเอียด ${escapeHtml(item.title)}">
+        <div
+          class="news-slide-bg"
+          aria-hidden="true"
+          style="background-image:url('${escapeHtml(item.image)}')"></div>
         <img
           src="${escapeHtml(item.image)}"
           alt="${escapeHtml(item.title)}"
@@ -874,7 +1108,8 @@ async function openNewsPopup(item) {
   });
   document.addEventListener('news-admin-updated', () => {
     window.SiteFast?.clear('homefast');
-    loadNews();
+    // รีเฟรชข่าวสดทันทีหลังสลับ user/admin โดยข้าม homefast prefetch เดิม
+    loadNews(true);
   });
 })();
 
@@ -909,6 +1144,60 @@ async function openNewsPopup(item) {
     return Boolean(url);
   }
 
+  function enableAnnouncementLink(element, value) {
+    if (!element) return;
+
+    const url = safeUrl(value);
+    if (!url) {
+      delete element.dataset.announcementUrl;
+      element.removeAttribute('role');
+      element.removeAttribute('tabindex');
+      element.removeAttribute('aria-label');
+      element.style.cursor = '';
+      return;
+    }
+
+    element.dataset.announcementUrl = url;
+    element.setAttribute('role', 'link');
+    element.setAttribute('tabindex', '0');
+    element.setAttribute('aria-label', 'เปิดเว็บไซต์ที่กำหนด');
+    element.style.cursor = 'pointer';
+
+    if (element.dataset.announcementLinkReady === '1') return;
+    element.dataset.announcementLinkReady = '1';
+
+    const openInSameTab = function () {
+      const target = safeUrl(element.dataset.announcementUrl);
+      if (target) window.location.assign(target);
+    };
+
+    element.addEventListener('click', openInSameTab);
+    element.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openInSameTab();
+      }
+    });
+  }
+
+
+  async function fetchCentralAnnouncement() {
+    const url = new URL(API_URL);
+    url.searchParams.set('mode', 'announcement');
+    url.searchParams.set('_ts', String(Date.now()));
+    const response = await fetch(url.toString(), { cache: 'no-store' });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const result = await response.json();
+    if (!result || result.success === false) {
+      throw new Error(result?.message || 'โหลด announcement กลางไม่สำเร็จ');
+    }
+    const data = result.data || result;
+    return {
+      text: String(data.text || data.announcementText || '').trim(),
+      url: String(data.url || data.announcementUrl || '').trim()
+    };
+  }
+
   async function loadAnnouncement() {
     const announcement = document.getElementById('announcementText');
     const socials = document.getElementById('announcementSocials');
@@ -930,19 +1219,51 @@ async function openNewsPopup(item) {
       }
 
       const contact = result.contact || {};
-      const organization = String(contact.organization || '').trim();
+      let announcementMessage = String(contact.announcementText || '').trim();
+      let announcementUrl = String(contact.announcementUrl || '').trim();
 
-      if (announcement) {
-        announcement.textContent = organization;
-        announcement.hidden = !organization;
+      // ถ้า homefast/about cache เป็นข้อมูลรุ่นเก่า ให้ fallback ไปอ่าน B24/D24 สดจากฐานกลาง
+      if (!announcementMessage || !announcementUrl) {
+        try {
+          const central = await fetchCentralAnnouncement();
+          if (!announcementMessage) announcementMessage = central.text;
+          if (!announcementUrl) announcementUrl = central.url;
+        } catch (fallbackError) {
+          console.warn('announcement central fallback:', fallbackError);
+        }
       }
 
-      const hasLine = setSocial('announcementLine', contact.line);
-      const hasFacebook = setSocial('announcementFacebook', contact.facebook);
-      if (socials) socials.hidden = !(hasLine || hasFacebook);
+      if (announcement) {
+        announcement.textContent = announcementMessage;
+        announcement.hidden = !announcementMessage;
+      }
+
+      enableAnnouncementLink(announcement, announcementUrl);
+
+      // aboutPages reads N6:N8 from this site's own setting sheet.
+      // homefast on this site may omit N8, so refresh only the social links.
+      let socialContact = contact;
+      try {
+        const socialUrl = new URL(API_URL);
+        socialUrl.searchParams.set('mode', 'aboutPages');
+        const socialResponse = await fetch(socialUrl.toString(), { cache: 'no-store' });
+        if (!socialResponse.ok) throw new Error(`HTTP ${socialResponse.status}`);
+        const socialResult = await socialResponse.json();
+        if (!socialResult || socialResult.success === false) throw new Error(socialResult?.message || 'โหลดช่องทางสื่อสังคมออนไลน์ไม่สำเร็จ');
+        socialContact = socialResult.contact || contact;
+      } catch (socialError) {
+        console.warn('announcement social fallback:', socialError);
+      }
+      const hasLine = setSocial('announcementLine', socialContact.line);
+      const hasFacebook = setSocial('announcementFacebook', socialContact.facebook);
+      const hasYoutube = setSocial('announcementYoutube', socialContact.youtube);
+      if (socials) socials.hidden = !(hasLine || hasFacebook || hasYoutube);
     } catch (error) {
       console.error('loadAnnouncement error:', error);
-      if (announcement) announcement.hidden = true;
+      if (announcement) {
+        announcement.hidden = true;
+        enableAnnouncementLink(announcement, '');
+      }
       if (socials) socials.hidden = true;
     }
   }
@@ -1009,6 +1330,7 @@ async function openNewsPopup(item) {
 
       setOptionalText('heroKickerText', hero.kicker);
       setOptionalText('heroTitleText', hero.title);
+      window.LP360HeroProgress?.titleReady();
       setOptionalText('heroDescriptionText', hero.description);
       setOptionalText('footerDescription', footer.description);
       setOptionalText('footerOrganization', footer.organization);
@@ -1016,6 +1338,7 @@ async function openNewsPopup(item) {
       setOptionalText('footerPhone', footer.phone, 'โทร. ');
     } catch (error) {
       console.error('loadSiteContent error:', error);
+      window.LP360HeroProgress?.titleReady();
     }
   }
 
@@ -1112,11 +1435,11 @@ async function openNewsPopup(item) {
 (() => {
   'use strict';
   const API_URL=window.APP_CONFIG.API_URL;
-  const CSS_FILES=['edit-website.css?v=20260827-2','news-manager.css?v=20260902-newsurl-optional-2','newsletter-manager.css?v=20260826-1','newsletter-overlay.css?v=20260826-3','facebook-manager.css?v=20260826-1','admin-subpage.css?v=20260901-index-team-1','team-manager.css?v=20260901-index-team-1','book-manager.css?v=20260904-1'];
-  const JS_FILES=['edit-website.js?v=20260827-2','news-manager.js?v=20260902-newsurl-optional-2','newsletter-manager.js?v=20260826-4','facebook-manager.js?v=20260826-2','team-manager.js?v=20260901-index-team-1','book-manager.js?v=20260904-1'];
+  const CSS_FILES=['edit-website.css?v=20260827-2','news-manager.css?v=20261004-admin-source-2','newsletter-manager.css?v=20260826-1','newsletter-overlay.css?v=20260826-3','facebook-manager.css?v=20260826-1','admin-subpage.css?v=20260901-index-team-1','team-manager.css?v=20260901-index-team-1','book-manager.css?v=20260904-1'];
+  const JS_FILES=['edit-website.js?v=20260827-2','news-manager.js?v=20261004-admin-source-2','newsletter-manager.js?v=20260922-action-icons-1','facebook-manager.js?v=20260922-action-icons-1','team-manager.js?v=20260922-action-icons-1','book-manager.js?v=20260922-action-icons-1'];
   let toolsPromise=null;
   let storagePromise=null;
-  const STORAGE_CACHE_KEY='mysiteAdminStorageV1';
+  const STORAGE_CACHE_KEY='LP360:LIBRARY:mysiteAdminStorageV2D15';
   const STORAGE_CACHE_MS=5*60*1000;
   const $=id=>document.getElementById(id);
   async function api(payload){const response=await fetch(API_URL,{method:'POST',cache:'no-store',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)});if(!response.ok)throw new Error(`HTTP ${response.status}`);const result=await response.json();if(!result.success)throw new Error(result.message||'ดำเนินการไม่สำเร็จ');return result}
@@ -1138,7 +1461,7 @@ async function openNewsPopup(item) {
     const maxBytes=Math.max(1,Number(data&&data.limitBytes)||100*1024*1024*1024);
     const percent=Math.min(100,Math.max(0,(bytes/maxBytes)*100));
     used.textContent='ใช้พื้นที่แล้ว '+formatStorageGb(bytes);
-    limit.textContent=(data&&data.limitLabel)||'100 GB';
+    limit.textContent=(data&&data.limitLabel)||'—';
     fill.style.width=percent.toFixed(2)+'%';
     track.setAttribute('aria-valuenow',String(Math.round(percent)));
     track.setAttribute('aria-valuetext',used.textContent+' จาก '+limit.textContent);
@@ -1149,7 +1472,7 @@ async function openNewsPopup(item) {
   }
   function writeStorageCache(data){try{sessionStorage.setItem(STORAGE_CACHE_KEY,JSON.stringify({savedAt:Date.now(),data}))}catch(_){}}
   function loadAdminStorage(force=false){
-    const token=sessionStorage.getItem('mysiteAdminToken');
+    const token=sessionStorage.getItem('LP360:LIBRARY:mysiteAdminToken');
     if(!token)return Promise.resolve();
     const cached=!force&&readStorageCache();
     if(cached)renderAdminStorage(cached,'ready');else renderAdminStorage(null,'loading');
@@ -1168,16 +1491,16 @@ async function openNewsPopup(item) {
   function openLogin(){ $('adminLoginStatus').textContent='';$('adminLoginModal').hidden=false;setTimeout(()=>$('adminUsername').focus(),30) }
   function closeLogin(){ $('adminLoginModal').hidden=true }
   $('adminLoginButton').addEventListener('click',openLogin);$('adminLoginClose').addEventListener('click',closeLogin);$('adminLoginModal').addEventListener('click',e=>{if(e.target===$('adminLoginModal'))closeLogin()});
-  $('adminLoginForm').addEventListener('submit',async event=>{event.preventDefault();const status=$('adminLoginStatus'),submit=$('adminLoginSubmit');status.textContent='';submit.disabled=true;submit.textContent='กำลังตรวจสอบ...';try{const result=await api({mode:'adminlogin',username:$('adminUsername').value.trim(),password:$('adminPassword').value});sessionStorage.setItem('mysiteAdminToken',result.token);sessionStorage.setItem('mysiteAdminName',result.username||'Admin');submit.textContent='กำลังโหลดเครื่องมือ...';await activateAdmin()}catch(error){sessionStorage.removeItem('mysiteAdminToken');status.textContent=error.message}finally{submit.disabled=false;submit.textContent='เข้าสู่ระบบ'}});
+  $('adminLoginForm').addEventListener('submit',async event=>{event.preventDefault();const status=$('adminLoginStatus'),submit=$('adminLoginSubmit');status.textContent='';submit.disabled=true;submit.textContent='กำลังตรวจสอบ...';try{const result=await api({mode:'adminlogin',username:$('adminUsername').value.trim(),password:$('adminPassword').value});sessionStorage.setItem('LP360:LIBRARY:mysiteAdminToken',result.token);sessionStorage.setItem('LP360:LIBRARY:mysiteAdminName',result.username||'Admin');submit.textContent='กำลังโหลดเครื่องมือ...';await activateAdmin()}catch(error){sessionStorage.removeItem('LP360:LIBRARY:mysiteAdminToken');status.textContent=error.message}finally{submit.disabled=false;submit.textContent='เข้าสู่ระบบ'}});
   $('adminForgotButton').addEventListener('click',async()=>{const modal=await Swal.fire({title:'ลืมรหัสผ่าน',input:'email',inputLabel:'กรอก Email ที่ลงทะเบียนไว้',showCancelButton:true,confirmButtonText:'ส่งข้อมูลเข้าสู่ Email',cancelButtonText:'ยกเลิก',confirmButtonColor:'#dc2626',inputValidator:value=>!value?'กรุณากรอก Email':undefined});if(!modal.isConfirmed)return;Swal.fire({title:'กำลังส่ง Email...',allowOutsideClick:false,didOpen:()=>Swal.showLoading()});try{await api({mode:'adminforgot',email:modal.value.trim()});Swal.fire({icon:'success',title:'ส่ง Email แล้ว',text:'กรุณาตรวจสอบกล่องจดหมายและจดหมายขยะ'})}catch(error){Swal.fire({icon:'error',title:'ส่งไม่สำเร็จ',text:error.message})}});
   $('adminTogglePassword').addEventListener('click',event=>{const input=$('adminPassword');input.type=input.type==='password'?'text':'password';event.currentTarget.querySelector('i').className=input.type==='password'?'fa-solid fa-eye':'fa-solid fa-eye-slash'});
-  $('adminLogoutButton').addEventListener('click',()=>{sessionStorage.removeItem('mysiteAdminToken');sessionStorage.removeItem('mysiteAdminName');setAdminUi(false);if(window.Swal)Swal.close()});
-  const existingToken=sessionStorage.getItem('mysiteAdminToken');
+  $('adminLogoutButton').addEventListener('click',()=>{sessionStorage.removeItem('LP360:LIBRARY:mysiteAdminToken');sessionStorage.removeItem('LP360:LIBRARY:mysiteAdminName');setAdminUi(false);if(window.Swal)Swal.close()});
+  const existingToken=sessionStorage.getItem('LP360:LIBRARY:mysiteAdminToken');
   if(existingToken){
     api({mode:'editwebsite',editor:'text',token:existingToken})
       .then(()=>loadAdminTools())
       .then(()=>{setAdminUi(true);loadAdminStorage(false)})
-      .catch(()=>{sessionStorage.removeItem('mysiteAdminToken');sessionStorage.removeItem('mysiteAdminName');setAdminUi(false)});
+      .catch(()=>{sessionStorage.removeItem('LP360:LIBRARY:mysiteAdminToken');sessionStorage.removeItem('LP360:LIBRARY:mysiteAdminName');setAdminUi(false)});
   }else setAdminUi(false);
 })();
 
@@ -1188,7 +1511,8 @@ async function openNewsPopup(item) {
 const API=window.APP_CONFIG.API_URL;
 const builtins=[
   {id:'featured',kind:'builtin',title:'หนังสือที่น่าสนใจ',visible:true},
-  {id:'learningSourceBox',kind:'builtin',title:'แหล่งเรียนรู้',visible:true},
+  {id:'readBookTimeBox',kind:'builtin',title:'อ่านหนังสือสะสมเวลา',visible:true},
+  {id:'learningSourceBox',kind:'builtin',title:'แหล่งส่งเสริมการอ่านในชุมชน',visible:true},
   {id:'bestPracticeBox',kind:'builtin',title:'Best Practice',visible:true},
   {id:'FBpostBox',kind:'builtin',title:'Facebook',visible:true},
   {id:'cliproomBox',kind:'builtin',title:'หลักสูตรออนไลน์',visible:true},
@@ -1224,16 +1548,28 @@ function normalize(items){
   const incoming=Array.isArray(items)?items:[];
   const out=[],seen=new Set();
   incoming.forEach(raw=>{const item=normalizeItem(raw);if(item&&!seen.has(item.id)){seen.add(item.id);out.push(item)}});
-  builtins.forEach(base=>{if(!seen.has(base.id))out.push({...base})});
+  builtins.forEach(base=>{if(seen.has(base.id))return;if(base.id==='readBookTimeBox'){const at=out.findIndex(item=>item.id==='featured');if(at>=0)out.splice(at+1,0,{...base});else out.unshift({...base});}else out.push({...base})});
   return out;
 }
 async function getLayout(){
+  if(window.SiteFast?.getHomeFast){
+    try{
+      const home=await window.SiteFast.getHomeFast();
+      const homeData=home?.data||home||{};
+      if(Array.isArray(homeData.sectionLayout))return normalize(homeData.sectionLayout);
+    }catch(e){console.warn('sectionLayout homefast fallback:',e)}
+  }
+  if(window.SiteFast?.fetchMode){
+    const j=await window.SiteFast.fetchMode('sectionlayout',{}, {key:'section-layout-v3',ttl:5*60*1000,staleTtl:24*60*60*1000});
+    if(j?.success===false)throw new Error(j.message||'โหลดการจัดเรียง Section ไม่สำเร็จ');
+    return normalize(j?.items||[]);
+  }
   const r=await fetch(API+'?mode=sectionlayout&_t='+Date.now(),{cache:'no-store'}),j=await r.json();
   if(!r.ok||j.success===false)throw new Error(j.message||'โหลดการจัดเรียง Section ไม่สำเร็จ');
   return normalize(j.items);
 }
 async function apiAdmin(action,data){
-  const token=sessionStorage.getItem('mysiteAdminToken')||'';
+  const token=sessionStorage.getItem('LP360:LIBRARY:mysiteAdminToken')||'';
   const r=await fetch(API,{method:'POST',cache:'no-store',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({mode:'sectionlayoutadmin',action,token,data:data||{}})}),j=await r.json();
   if(!r.ok||!j.success)throw new Error(j.message||'ดำเนินการไม่สำเร็จ');
   return j.data||{};
@@ -1456,7 +1792,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
       const url = new URL(API_URL);
       url.searchParams.set('mode', 'homeSummary');
       const response = window.SiteFast
-        ? await window.SiteFast.fetchMode('homeSummary', {}, { key: '', ttl: 0 }).then(data => ({ ok: true, json: async () => data }))
+        ? await window.SiteFast.fetchMode('homeSummary', {}, { key: 'home-summary-v4', ttl: 5 * 60 * 1000, staleTtl: 24 * 60 * 60 * 1000 }).then(data => ({ ok: true, json: async () => data }))
         : await fetch(url.toString(), { cache: 'default' });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
@@ -1544,12 +1880,12 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
         data-source-id="${escAttr(source.id)}"
         data-source-index="${index}"
         style="left:${x}%;top:${y}%;--lsb-source-color:${escAttr(color)}"
-        aria-label="${escAttr(source.name || 'แหล่งเรียนรู้')}"
+        aria-label="${escAttr(source.name || 'แหล่งส่งเสริมการอ่านในชุมชน')}"
       >
         <span class="lsb-source-pin" aria-hidden="true">
           <i class="fa-solid fa-location-dot"></i>
         </span>
-        <span class="lsb-source-marker-name">${esc(source.name || 'แหล่งเรียนรู้')}</span>
+        <span class="lsb-source-marker-name">${esc(source.name || 'แหล่งส่งเสริมการอ่านในชุมชน')}</span>
 
         <span class="lsb-source-popup" role="tooltip">
           ${image ? `
@@ -1558,7 +1894,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
             <span class="lsb-source-popup-noimage">ไม่มีรูปภาพ</span>
           `}
           <span class="lsb-source-popup-body">
-            <strong>${esc(source.name || 'แหล่งเรียนรู้')}</strong>
+            <strong>${esc(source.name || 'แหล่งส่งเสริมการอ่านในชุมชน')}</strong>
             ${source.category ? `<small><i class="fa-solid fa-tag"></i>${esc(source.category)}</small>` : ''}
             ${source.address ? `<small><i class="fa-solid fa-location-dot"></i>${esc(source.address)}</small>` : ''}
             <span class="lsb-source-popup-stats">
@@ -1581,7 +1917,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
         data-source-index="${index}"
         tabindex="0"
         role="button"
-        aria-label="ดูรายละเอียด ${escAttr(source.name || 'แหล่งเรียนรู้')}"
+        aria-label="ดูรายละเอียด ${escAttr(source.name || 'แหล่งส่งเสริมการอ่านในชุมชน')}"
       >
         <div class="lsb-source-slide-image">
           ${image ? `
@@ -1592,7 +1928,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
           ${source.category ? `<span class="lsb-source-slide-category">${esc(source.category)}</span>` : ''}
         </div>
         <div class="lsb-source-slide-info">
-          <strong>${esc(source.name || 'แหล่งเรียนรู้')}</strong>
+          <strong>${esc(source.name || 'แหล่งส่งเสริมการอ่านในชุมชน')}</strong>
           <span>
             <i class="fa-solid fa-star" aria-hidden="true"></i>
             ${formatNumber(source.averageRating || 0)}
@@ -1619,9 +1955,9 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
     grid.innerHTML = `
       <div class="lsb-map-explorer">
         <div class="lsb-main-map-wrap">
-          <div class="lsb-main-map" aria-label="${escAttr(currentArea.mapTitle || 'แผนที่แหล่งเรียนรู้')}">
+          <div class="lsb-main-map" aria-label="${escAttr(currentArea.mapTitle || 'แผนที่แหล่งส่งเสริมการอ่านในชุมชน')}">
             ${mapImage ? `
-              <img class="lsb-main-map-image" src="${escAttr(mapImage)}" alt="${escAttr(currentArea.mapTitle || currentArea.name || 'แผนที่แหล่งเรียนรู้')}">
+              <img class="lsb-main-map-image" src="${escAttr(mapImage)}" alt="${escAttr(currentArea.mapTitle || currentArea.name || 'แผนที่แหล่งส่งเสริมการอ่านในชุมชน')}">
             ` : `
               <div class="lsb-main-map-empty">
                 <i class="fa-regular fa-map"></i>
@@ -1634,8 +1970,8 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
             </div>
 
             <div class="lsb-map-summary">
-              <strong>${esc(currentArea.mapTitle || currentArea.name || 'แผนที่แหล่งเรียนรู้')}</strong>
-              <span>${formatNumber(sources.length)} แหล่งเรียนรู้</span>
+              <strong>${esc(currentArea.mapTitle || currentArea.name || 'แผนที่แหล่งส่งเสริมการอ่านในชุมชน')}</strong>
+              <span>${formatNumber(sources.length)} แหล่งส่งเสริมการอ่านในชุมชน</span>
             </div>
           </div>
         </div>
@@ -1643,7 +1979,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
         <div class="lsb-source-carousel" ${sources.length ? '' : 'hidden'}>
           <div class="lsb-source-carousel-heading">
             <div>
-              <span>รายการแหล่งเรียนรู้</span>
+              <span>รายการแหล่งส่งเสริมการอ่านในชุมชน</span>
               <strong>${formatNumber(sources.length)} แห่ง</strong>
             </div>
             <small>เลื่อนดูรายการ หรือวางเมาส์ที่หมุดบนภาพ</small>
@@ -1667,7 +2003,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
         </div>
 
         ${sources.length ? '' : `
-          <div class="lsb-empty">ยังไม่มีรายการแหล่งเรียนรู้ในชีต learning_sources</div>
+          <div class="lsb-empty">ยังไม่มีรายการแหล่งส่งเสริมการอ่านในชุมชนในชีต แหล่งส่งเสริมการอ่านในชุมชน</div>
         `}
       </div>
     `;
@@ -1766,7 +2102,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 
     const areas = Array.isArray(result.areas) ? result.areas : [];
     if (!areas.length) {
-      grid.innerHTML = '<div class="lsb-loading">ยังไม่มีข้อมูลแหล่งเรียนรู้</div>';
+      grid.innerHTML = '<div class="lsb-loading">ยังไม่มีข้อมูลแหล่งส่งเสริมการอ่านในชุมชน</div>';
       return;
     }
 
@@ -1780,11 +2116,11 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
       return;
     }
 
-    grid.innerHTML = '<div class="lsb-loading">กำลังโหลดแหล่งเรียนรู้...</div>';
+    grid.innerHTML = '<div class="lsb-loading section-loading-with-spinner"><span class="section-loading-spinner" aria-hidden="true"></span>กำลังโหลดแหล่งส่งเสริมการอ่านในชุมชน...</div>';
 
     if (window.SiteFast) {
-      window.SiteFast.fetchMode('learningAreas', { v: '6' }, {
-        key: 'learning-areas-map-v6',
+      window.SiteFast.fetchMode('learningAreas', { v: '7' }, {
+        key: 'community-book-house-map-v1',
         ttl: 60000
       })
         .then(window.receiveLearningAreas)
@@ -1808,7 +2144,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
     script.src =
       WEB_APP_URL +
       '?mode=learningAreas' +
-      '&v=6' +
+      '&v=7' +
       '&callback=window.receiveLearningAreas' +
       '&_=' +
       Date.now();
@@ -1889,13 +2225,15 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
       .sort((a, b) => dateValue(b.date) - dateValue(a.date) || Number(b.order || 0) - Number(a.order || 0));
 
     if (!rows.length) {
+      status.classList.remove('section-loading-with-spinner');
       status.hidden = false;
-      status.textContent = 'ยังไม่มีรายการ Best Practice ในชีต best_practice';
+      status.textContent = 'ยังไม่มีรายการ Best Practice';
       slider.hidden = true;
       track.innerHTML = '';
       return;
     }
 
+    status.classList.remove('section-loading-with-spinner');
     status.hidden = true;
     slider.hidden = false;
 
@@ -1986,7 +2324,8 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
     if (!status) return;
 
     status.hidden = false;
-    status.textContent = 'กำลังโหลด Best Practice...';
+    status.classList.add('section-loading-with-spinner');
+    status.innerHTML = '<span class="section-loading-spinner" aria-hidden="true"></span>กำลังโหลด Best Practice...';
     if (slider) slider.hidden = true;
 
     loadPromise = (async () => {
@@ -1999,6 +2338,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
         render(items);
       } catch (error) {
         console.error('Best Practice Box:', error);
+        status.classList.remove('section-loading-with-spinner');
         status.hidden = false;
         status.textContent = 'โหลด Best Practice ไม่สำเร็จ: ' + (error?.message || 'ไม่ทราบสาเหตุ');
         if (slider) slider.hidden = true;
@@ -2263,7 +2603,8 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
     const track = document.getElementById('bossTrack');
     if (!box || !track) return;
     box.removeAttribute('hidden');
-    track.innerHTML = `<div class="boss-carousel-status${isError ? ' is-error' : ''}">${esc(message || '')}</div>`;
+    const isLoading = String(message || '').startsWith('กำลังโหลด');
+    track.innerHTML = `<div class="boss-carousel-status${isError ? ' is-error' : ''}${isLoading ? ' section-loading-with-spinner' : ''}">${isLoading ? '<span class="section-loading-spinner" aria-hidden="true"></span>' : ''}${esc(message || '')}</div>`;
     const prev = document.getElementById('bossPrev');
     const next = document.getElementById('bossNext');
     if (prev) prev.hidden = true;
@@ -2515,10 +2856,14 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 (() => {
   'use strict';
 
-  const CLIPROOM_WEB_APP_URL =
-    'https://script.google.com/macros/s/AKfycbz6rNShJFZOlNmVb1ev7lzikFvxyhh2PohGsIjDnqDGRUyPunuw4TlsfWihigms-_YwLA/exec';
-  const CACHE_KEY = 'SITE_FAST:cliproom-catalog-v1';
-  const CACHE_AGE = 5 * 60 * 1000;
+  const MAIN_API_URL = (window.SiteFast && window.SiteFast.API_URL) || (window.APP_CONFIG && window.APP_CONFIG.API_URL) || '';
+  const EXEC_CACHE_KEY = 'LP360:LIBRARY:SITE_FAST:cliproom-exec-v3';
+  const EXEC_CACHE_AGE = 10 * 60 * 1000;
+  const CATALOG_CACHE_KEY = 'LP360:LIBRARY:SITE_FAST:cliproom-catalog-v3-dynamic-exec';
+  const CATALOG_STALE_AGE = 24 * 60 * 60 * 1000;
+  const JSONP_TIMEOUT = 45 * 1000;
+  const RETRY_DELAYS = [1000, 1800, 3200, 6000, 10000, 16000, 30000];
+
   const track = document.getElementById('cliproomTrack');
   if (!track) return;
 
@@ -2527,24 +2872,147 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
   let perPage = 3;
   let timer = null;
   let loadingStarted = false;
+  let activeCliproomExecUrl = '';
 
   const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({
     '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'
   }[char]));
 
   const cardsPerPage = () => window.innerWidth <= 620 ? 1 : window.innerWidth <= 900 ? 2 : 3;
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const retryDelay = attempt => RETRY_DELAYS[Math.min(Math.max(0, attempt - 1), RETRY_DELAYS.length - 1)];
+
+  async function waitRetry(ms) {
+    if (navigator.onLine === false) {
+      await Promise.race([
+        new Promise(resolve => window.addEventListener('online', resolve, { once: true })),
+        sleep(Math.max(ms, 15000))
+      ]);
+      return;
+    }
+    await sleep(ms);
+  }
+
+  function storageGet(key, maxAge) {
+    for (const storage of [window.sessionStorage, window.localStorage]) {
+      try {
+        const saved = JSON.parse(storage.getItem(key) || 'null');
+        if (saved && saved.savedAt && Date.now() - saved.savedAt <= maxAge) return saved;
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  function storageSet(key, value) {
+    const raw = JSON.stringify(value);
+    try { sessionStorage.setItem(key, raw); } catch (_) {}
+    try { localStorage.setItem(key, raw); } catch (_) {}
+  }
+
+  function storageRemove(key) {
+    try { sessionStorage.removeItem(key); } catch (_) {}
+    try { localStorage.removeItem(key); } catch (_) {}
+  }
+
+  function jsonpRequest(baseUrl, params) {
+    return new Promise((resolve, reject) => {
+      const callbackName = '__cliproomJsonp_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+      const script = document.createElement('script');
+      let timeoutId = null;
+      let settled = false;
+
+      const cleanup = () => {
+        if (timeoutId) clearTimeout(timeoutId);
+        try { delete window[callbackName]; } catch (_) { window[callbackName] = undefined; }
+        if (script.parentNode) script.parentNode.removeChild(script);
+      };
+      const finish = (ok, value) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        ok ? resolve(value) : reject(value);
+      };
+
+      window[callbackName] = payload => finish(true, payload);
+
+      try {
+        const url = new URL(baseUrl);
+        Object.entries(params || {}).forEach(([key, value]) => {
+          if (value !== undefined && value !== null) url.searchParams.set(key, value);
+        });
+        url.searchParams.set('callback', callbackName);
+        url.searchParams.set('_t', String(Date.now()));
+        script.src = url.toString();
+        script.async = true;
+        script.onerror = () => finish(false, new Error('เชื่อมต่อ Apps Script ไม่สำเร็จ'));
+        timeoutId = setTimeout(() => finish(false, new Error('Apps Script ใช้เวลาตอบกลับนานเกินไป')), JSONP_TIMEOUT);
+        document.head.appendChild(script);
+      } catch (error) {
+        finish(false, error);
+      }
+    });
+  }
+
+  function readExecCache() {
+    const saved = storageGet(EXEC_CACHE_KEY, EXEC_CACHE_AGE);
+    const url = String(saved?.url || '').trim();
+    return /^https:\/\/script\.google\.com\/macros\/s\/[^/?#]+\/exec(?:[?#].*)?$/i.test(url) ? url : '';
+  }
+
+  function writeExecCache(url) {
+    storageSet(EXEC_CACHE_KEY, { savedAt: Date.now(), url });
+  }
+
+  function clearExecCache() {
+    storageRemove(EXEC_CACHE_KEY);
+  }
+
+  async function resolveCliproomExecUrl(forceFresh = false) {
+    const mainApi = String(MAIN_API_URL || '').trim();
+    if (!mainApi) throw new Error('ไม่พบ URL ของ Apps Script หลัก');
+
+    if (!forceFresh) {
+      const cached = readExecCache();
+      if (cached) return cached;
+    }
+
+    let attempt = 0;
+    while (true) {
+      try {
+        const result = await jsonpRequest(mainApi, { mode: 'cliproomexec' });
+        if (!result || result.success === false) {
+          throw new Error((result && result.message) || 'อ่าน URL Cliproom จากชีตไม่สำเร็จ');
+        }
+        const execUrl = String(result.url || '').trim();
+        if (!/^https:\/\/script\.google\.com\/macros\/s\/[^/?#]+\/exec(?:[?#].*)?$/i.test(execUrl)) {
+          throw new Error('URL Cliproom จากชีตไม่ถูกต้อง');
+        }
+        writeExecCache(execUrl);
+        return execUrl;
+      } catch (error) {
+        attempt += 1;
+        const delay = retryDelay(attempt);
+        console.warn(`Cliproom resolver retry #${attempt}:`, error);
+        if (!courses.length) {
+          track.innerHTML = `<div class="cliproom-loading"><span class="cliproom-spinner"></span><span>กำลังเชื่อมต่อระบบหลักสูตร...<br><small>ลองใหม่อัตโนมัติ ครั้งที่ ${attempt}</small></span></div>`;
+        }
+        await waitRetry(delay);
+      }
+    }
+  }
 
   function render() {
     if (!courses.length) {
-      track.innerHTML = '<div class="cliproom-loading cliproom-error">ยังโหลดรายการหลักสูตรไม่ได้<br>กรุณาอัปเดต Deployment ของ Apps Script</div>';
-      document.getElementById('cliproomDots').innerHTML = '';
+      track.innerHTML = '<div class="cliproom-loading">กำลังรอข้อมูลหลักสูตร...</div>';
+      const dots = document.getElementById('cliproomDots');
+      if (dots) dots.innerHTML = '';
       return;
     }
 
     track.innerHTML = courses.map(course => `
       <article class="cliproom-card" tabindex="0" role="link" aria-label="เปิดหลักสูตร ${esc(course.title)}">
         <span class="cliproom-cover">
-          ${course.coverUrl ? `<img src="${esc(course.coverUrl)}" alt="${esc(course.title)}" loading="lazy">` : ''}
+          ${course.coverUrl ? `<img src="${esc(course.coverUrl)}" alt="${esc(course.title)}" loading="lazy" decoding="async">` : ''}
           <span class="cliproom-play" aria-hidden="true">▶</span>
         </span>
         <div class="cliproom-body">
@@ -2574,23 +3042,25 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
     const count = Math.max(1, Math.ceil(courses.length / perPage));
     page = Math.max(0, Math.min(page, count - 1));
     const card = track.querySelector('.cliproom-card');
-    if (card) {
-      track.style.transform = `translateX(-${page * perPage * (card.getBoundingClientRect().width + 18)}px)`;
-    }
+    if (card) track.style.transform = `translateX(-${page * perPage * (card.getBoundingClientRect().width + 18)}px)`;
     const dots = document.getElementById('cliproomDots');
-    dots.innerHTML = Array.from({ length: count }, (_, i) =>
-      `<button class="cliproom-dot ${i === page ? 'active' : ''}" type="button" data-page="${i}" aria-label="หน้าที่ ${i + 1}"></button>`
-    ).join('');
-    dots.querySelectorAll('[data-page]').forEach(dot => {
-      dot.onclick = event => {
-        event.stopPropagation();
-        page = Number(dot.dataset.page);
-        update(false);
-        restart();
-      };
-    });
-    document.getElementById('cliproomPrev').disabled = page === 0;
-    document.getElementById('cliproomNext').disabled = page === count - 1;
+    if (dots) {
+      dots.innerHTML = Array.from({ length: count }, (_, i) =>
+        `<button class="cliproom-dot ${i === page ? 'active' : ''}" type="button" data-page="${i}" aria-label="หน้าที่ ${i + 1}"></button>`
+      ).join('');
+      dots.querySelectorAll('[data-page]').forEach(dot => {
+        dot.onclick = event => {
+          event.stopPropagation();
+          page = Number(dot.dataset.page);
+          update(false);
+          restart();
+        };
+      });
+    }
+    const prev = document.getElementById('cliproomPrev');
+    const next = document.getElementById('cliproomNext');
+    if (prev) prev.disabled = page === 0;
+    if (next) next.disabled = page === count - 1;
   }
 
   const openCliproom = () => window.open('cliproom.html', '_blank', 'noopener');
@@ -2607,59 +3077,84 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
     if (courses.length > perPage) timer = setInterval(() => move(1), 6000);
   }
 
-  function readCache() {
-    try {
-      const saved = JSON.parse(sessionStorage.getItem(CACHE_KEY) || 'null');
-      if (!saved || Date.now() - saved.savedAt > CACHE_AGE) return null;
-      return saved.payload;
-    } catch (_) {
-      return null;
-    }
+  function readCatalogCache(execUrl) {
+    const saved = storageGet(CATALOG_CACHE_KEY, CATALOG_STALE_AGE);
+    if (!saved || saved.execUrl !== execUrl || !saved.payload) return null;
+    return saved.payload;
   }
 
-  function writeCache(payload) {
-    try {
-      sessionStorage.setItem(CACHE_KEY, JSON.stringify({ savedAt: Date.now(), payload }));
-    } catch (_) {}
+  function writeCatalogCache(payload) {
+    storageSet(CATALOG_CACHE_KEY, {
+      savedAt: Date.now(),
+      execUrl: activeCliproomExecUrl,
+      payload
+    });
   }
 
   function receive(payload) {
-    clearTimeout(window.__cliproomTimeout);
-    if (payload?.success && Array.isArray(payload.courses)) writeCache(payload);
-    courses = payload?.success && Array.isArray(payload.courses) ? payload.courses : [];
+    if (!payload || payload.success !== true || !Array.isArray(payload.courses)) return false;
+    writeCatalogCache(payload);
+    courses = payload.courses;
+    if (!courses.length) {
+      track.innerHTML = '<div class="cliproom-loading">ยังไม่มีหลักสูตรที่เปิดใช้งาน</div>';
+      const dots = document.getElementById('cliproomDots');
+      if (dots) dots.innerHTML = '';
+      return true;
+    }
     render();
     restart();
+    return true;
   }
 
-  function loadCatalog() {
+  async function fetchCatalog(execUrl) {
+    const payload = await jsonpRequest(execUrl, { mode: 'cliproomBox' });
+    if (!payload || payload.success !== true || !Array.isArray(payload.courses)) {
+      throw new Error((payload && payload.message) || 'ข้อมูลหลักสูตรไม่สมบูรณ์');
+    }
+    return payload;
+  }
+
+  async function loadCatalog() {
     if (loadingStarted) return;
     loadingStarted = true;
+    let attempt = 0;
+    let cacheShown = false;
 
-    const cached = readCache();
-    if (cached) {
-      receive(cached);
-      return;
+    while (true) {
+      try {
+        activeCliproomExecUrl = await resolveCliproomExecUrl(attempt > 0);
+
+        if (!cacheShown) {
+          const cached = readCatalogCache(activeCliproomExecUrl);
+          if (cached && receive(cached)) cacheShown = true;
+        }
+
+        const payload = await fetchCatalog(activeCliproomExecUrl);
+        receive(payload);
+        return;
+      } catch (error) {
+        attempt += 1;
+        clearExecCache();
+        const delay = retryDelay(attempt);
+        console.warn(`Cliproom catalog retry #${attempt}:`, error);
+        if (!courses.length) {
+          track.innerHTML = `<div class="cliproom-loading"><span class="cliproom-spinner"></span><span>กำลังโหลดรายการหลักสูตร...<br><small>เชื่อมต่อไม่สำเร็จ ระบบจะลองใหม่อัตโนมัติ ครั้งที่ ${attempt}</small></span></div>`;
+        }
+        await waitRetry(delay);
+      }
     }
-
-    window.cliproomCatalogCallback = receive;
-    const script = document.createElement('script');
-    script.src = CLIPROOM_WEB_APP_URL + '?mode=cliproomBox&callback=cliproomCatalogCallback';
-    script.async = true;
-    script.onerror = () => receive(null);
-    document.head.appendChild(script);
-    window.__cliproomTimeout = setTimeout(() => receive(null), 12000);
   }
 
-  window.cliproomCatalogCallback = receive;
-  document.getElementById('cliproomPrev').onclick = event => { event.stopPropagation(); move(-1); };
-  document.getElementById('cliproomNext').onclick = event => { event.stopPropagation(); move(1); };
+  window.cliproomCatalogCallback = payload => receive(payload);
+  const prev = document.getElementById('cliproomPrev');
+  const next = document.getElementById('cliproomNext');
+  if (prev) prev.onclick = event => { event.stopPropagation(); move(-1); };
+  if (next) next.onclick = event => { event.stopPropagation(); move(1); };
   window.addEventListener('resize', () => update(false));
 
-  if (window.SiteFast) window.SiteFast.whenNear('cliproomBox', loadCatalog);
+  if (window.SiteFast) window.SiteFast.whenNear('cliproomBox', loadCatalog, '900px 0px');
   else loadCatalog();
 })();
-
-;
 
 /* ===== shopactivity-box.js ===== */
 (() => {
@@ -2686,7 +3181,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 
   const API_URL = window.APP_CONFIG.API_URL;
   const TEACHER_URL = API_URL + '?page=teacher';
-  let student = JSON.parse(localStorage.getItem('LEARN_STUDENT') || 'null');
+  let student = JSON.parse(localStorage.getItem('LP360:LIBRARY:LEARN_STUDENT') || 'null');
   let editProfileRemovePhoto = false;
   let activities = [];
   let currentActivityTarget = 'all';
@@ -2995,7 +3490,7 @@ if (!fullname || !phone) {
     student = res.student;
 
     localStorage.setItem(
-      'LEARN_STUDENT',
+      'LP360:LIBRARY:LEARN_STUDENT',
       JSON.stringify(student)
     );
 
@@ -3099,7 +3594,7 @@ if (!fullname || !phone) {
 
       // ถือว่าลงทะเบียนสำเร็จ = เข้าสู่ระบบทันที
       student = res.student;
-      localStorage.setItem('LEARN_STUDENT', JSON.stringify(student));
+      localStorage.setItem('LP360:LIBRARY:LEARN_STUDENT', JSON.stringify(student));
       closeModal('studentModal');
       clearStudentPhoto();
       updateTop();
@@ -3126,7 +3621,7 @@ if (!fullname || !phone) {
       Swal.close();
       if (!res.ok) return Swal.fire('แจ้งเตือน',res.message,'warning');
       student = res.student;
-      localStorage.setItem('LEARN_STUDENT',JSON.stringify(student));
+      localStorage.setItem('LP360:LIBRARY:LEARN_STUDENT',JSON.stringify(student));
       closeModal('studentModal'); updateTop();
       Swal.fire('สำเร็จ',res.message,'success');
     } catch(err) { Swal.close(); Swal.fire('ผิดพลาด',err.message,'error'); }
@@ -3525,7 +4020,7 @@ async function loadMyTotalHours() {
     }).then(r=>{
       if(!r.isConfirmed)return;
       student=null;
-      localStorage.removeItem('LEARN_STUDENT');
+      localStorage.removeItem('LP360:LIBRARY:LEARN_STUDENT');
       closeEditProfile();
       closeModal('studentModal');
       updateTop();
@@ -3535,7 +4030,7 @@ async function loadMyTotalHours() {
   }
 
   function closeStudentModal() {
-    Swal.fire({title:'ออกจากระบบ?',icon:'warning',showCancelButton:true,confirmButtonText:'ออกจากระบบ',cancelButtonText:'ยกเลิก'}).then(r=>{if(!r.isConfirmed)return;student=null;localStorage.removeItem('LEARN_STUDENT');closeModal('studentModal');updateTop();showPage('activitiesPage',$('learningBaseModule').querySelector('.learning-tabs button'));});
+    Swal.fire({title:'ออกจากระบบ?',icon:'warning',showCancelButton:true,confirmButtonText:'ออกจากระบบ',cancelButtonText:'ยกเลิก'}).then(r=>{if(!r.isConfirmed)return;student=null;localStorage.removeItem('LP360:LIBRARY:LEARN_STUDENT');closeModal('studentModal');updateTop();showPage('activitiesPage',$('learningBaseModule').querySelector('.learning-tabs button'));});
   }
 
 
@@ -3678,7 +4173,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   function getStudent() {
     try {
       return JSON.parse(
-        localStorage.getItem('LEARN_STUDENT') || 'null'
+        localStorage.getItem('LP360:LIBRARY:LEARN_STUDENT') || 'null'
       );
     } catch (_) {
       return null;
@@ -3838,7 +4333,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   window.addEventListener('storage', event => {
-    if (event.key === 'LEARN_STUDENT') {
+    if (event.key === 'LP360:LIBRARY:LEARN_STUDENT') {
       renderProfile();
     }
   });

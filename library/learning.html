@@ -1,9 +1,13 @@
 <!DOCTYPE html>
 <html lang="th">
 <head>
+  <script src="../sites-config.js?v=20260930-central-2"></script>
+  <script src="../site-bootstrap.js?v=20260930-isolation-2"></script>
+
   
     <script src="app-config.js?v=20260901-central-api-1"></script>
 <meta charset="UTF-8">
+  <title>แหล่งส่งเสริมการอ่านในชุมชน</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -799,7 +803,7 @@ th{background:#f8fafc;font-size:13px;color:#475569;position:sticky;top:0}
   box-shadow:0 0 0 2px rgba(15,23,42,.12);
 }
 
-/* ป้ายชื่อแหล่งเรียนรู้ */
+/* ป้ายชื่อแหล่งส่งเสริมการอ่านในชุมชน */
 .marker-name{
   position:absolute;
   z-index:30;
@@ -1280,11 +1284,17 @@ main > .section:first-child {
 }
 </style>
   <link rel="stylesheet" href="theme-modern.css?v=20260902-1">
+  <link rel="preconnect" href="https://script.google.com">
+  <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
+
+  <link rel="stylesheet" href="template-switcher.css?v=20260924-ui-2">
+  <script>window.LP360_TEMPLATE_SITE="library";window.LP360_TEMPLATE_ADMIN_TOKEN_KEY="LP360:LIBRARY:mysiteAdminToken";</script>
+  <script src="template-switcher.js?v=20260924-popup-template1-v2"></script>
 </head>
 <body class="theme-v2">
   <div id="loading" class="loading">
     <div class="spinner"></div>
-    <b>กำลังโหลดข้อมูลแหล่งเรียนรู้...</b>
+    <b>กำลังโหลดข้อมูลแหล่งส่งเสริมการอ่านในชุมชน...</b>
   </div>
 
   <header class="topbar">
@@ -1292,8 +1302,8 @@ main > .section:first-child {
       <div class="brand">
         <img id="siteLogo" alt="logo">
         <div>
-          <div id="brandTitle" class="brand-title">แหล่งเรียนรู้ในพื้นที่</div>
-          <div id="brandSub" class="brand-sub">ระบบฐานข้อมูลแหล่งเรียนรู้ชุมชน</div>
+          <div id="brandTitle" class="brand-title">แหล่งส่งเสริมการอ่านในชุมชน</div>
+          <div id="brandSub" class="brand-sub">ระบบฐานข้อมูลแหล่งส่งเสริมการอ่านในชุมชน</div>
         </div>
       </div>
       <div class="nav-actions">
@@ -1313,11 +1323,11 @@ main > .section:first-child {
             ค้นพบองค์ความรู้ใกล้ตัวคุณ
         </span>
 
-        <h1 id="heroTitle">แหล่งเรียนรู้ในพื้นที่</h1>
+        <h1 id="heroTitle">แหล่งส่งเสริมการอ่านในชุมชน</h1>
 
         <p>
-            สำรวจแหล่งเรียนรู้ ภูมิปัญญาท้องถิ่น
-            ศูนย์ฝึกอาชีพ ห้องสมุด และพื้นที่แห่งการเรียนรู้
+            สำรวจแหล่งส่งเสริมการอ่านในชุมชน จุดส่งเสริมการอ่าน และพื้นที่เรียนรู้ใกล้บ้าน
+            พร้อมข้อมูลผู้ดูแล ที่ตั้ง และรายละเอียดการให้บริการ
             ผ่านแผนที่แบบโต้ตอบ
         </p>
 
@@ -1325,7 +1335,7 @@ main > .section:first-child {
 
   <div class="glass-card">
     <strong id="sourceCount">0</strong>
-    <span>แหล่งเรียนรู้</span>
+    <span>แหล่งส่งเสริมการอ่านในชุมชน</span>
   </div>
 
   <div class="glass-card">
@@ -1351,7 +1361,7 @@ main > .section:first-child {
     <!-- ฝั่งซ้าย -->
     <div>
       <h2 id="mapTitle" class="section-title">
-        แผนที่แหล่งเรียนรู้
+        แผนที่แหล่งส่งเสริมการอ่านในชุมชน
       </h2>
 
       <p class="section-sub">
@@ -1386,7 +1396,7 @@ main > .section:first-child {
 
       <img
         id="mapImage"
-        alt="แผนที่แหล่งเรียนรู้">
+        alt="แผนที่แหล่งส่งเสริมการอ่านในชุมชน">
 
       <div id="markers"></div>
 
@@ -1401,12 +1411,12 @@ main > .section:first-child {
     <section class="filter-bar places-filter-bar">
 
       <div class="field">
-        <label>ค้นหาแหล่งเรียนรู้</label>
+        <label>ค้นหาแหล่งส่งเสริมการอ่านในชุมชน</label>
 
         <input
           id="searchInput"
           class="control"
-          placeholder="ค้นหาจากชื่อ เจ้าของ/ผู้ดูแลแหล่งเรียนรู้ หรือที่ตั้ง">
+          placeholder="ค้นหาจากชื่อ ผู้ดูแลแหล่งส่งเสริมการอ่านในชุมชน หรือที่ตั้ง">
       </div>
 
       <div class="field">
@@ -1423,14 +1433,14 @@ main > .section:first-child {
       </div>
 
       <div class="field">
-        <label>ประเภทแหล่งเรียนรู้</label>
+        <label>ประเภทแหล่งส่งเสริมการอ่านในชุมชน</label>
 
         <select
           id="categoryFilter"
           class="control">
 
           <option value="">
-            ทุกประเภทแหล่งเรียนรู้
+            ทุกประเภทแหล่งส่งเสริมการอ่านในชุมชน
           </option>
         </select>
       </div>
@@ -1458,7 +1468,7 @@ main > .section:first-child {
       <div class="section-head">
         <div>
           <h2 class="section-title">
-            รายการแหล่งเรียนรู้
+            รายการแหล่งส่งเสริมการอ่านในชุมชน
           </h2>
 
           <p
@@ -1497,7 +1507,7 @@ main > .section:first-child {
 </main>
 
   <footer class="footer">
-    <div class="container">ระบบแหล่งเรียนรู้ในพื้นที่ • พัฒนาด้วย Google Apps Script และ Google Sheets</div>
+    <div class="container">ระบบแหล่งส่งเสริมการอ่านในชุมชน • พัฒนาด้วย Google Apps Script และ Google Sheets</div>
   </footer>
 
   <div id="detailModal" class="modal hidden" onclick="modalBackdrop(event)">
@@ -1538,7 +1548,6 @@ main > .section:first-child {
     </div>
   </div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script>
     const APP_URL = window.APP_CONFIG.API_URL;
    let appData = {
@@ -1615,15 +1624,138 @@ let detailSlideCount = 0;
       document.head.appendChild(script);
     }
 
-document.addEventListener("DOMContentLoaded", async () => {
-  bindEvents();
 
-  try {
-    await loadLearningSheetOptions();
-    loadPublicData();
-  } catch (error) {
-    showError(error);
-  }
+
+    let qrCodeLibraryPromise_ = null;
+    function ensureQrCodeLibrary_() {
+      if (window.QRCode) return Promise.resolve(window.QRCode);
+      if (qrCodeLibraryPromise_) return qrCodeLibraryPromise_;
+
+      qrCodeLibraryPromise_ = new Promise(function(resolve, reject) {
+        const script = document.createElement('script');
+        const timer = setTimeout(function() {
+          script.remove();
+          qrCodeLibraryPromise_ = null;
+          reject(new Error('โหลด QR Code ไม่สำเร็จ'));
+        }, 12000);
+
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+        script.async = true;
+        script.onload = function() {
+          clearTimeout(timer);
+          if (window.QRCode) resolve(window.QRCode);
+          else {
+            qrCodeLibraryPromise_ = null;
+            reject(new Error('QR Code library ไม่พร้อมใช้งาน'));
+          }
+        };
+        script.onerror = function() {
+          clearTimeout(timer);
+          qrCodeLibraryPromise_ = null;
+          reject(new Error('โหลด QR Code ไม่สำเร็จ'));
+        };
+        document.head.appendChild(script);
+      });
+
+      return qrCodeLibraryPromise_;
+    }
+
+    const LEARNING_PAGE_CACHE_VERSION = 'LP360:LIBRARY:learning-page-fast-v3';
+    const LEARNING_PAGE_CACHE_MAX_AGE = 24 * 60 * 60 * 1000;
+
+    function learningCacheKey_(suffix) {
+      return LEARNING_PAGE_CACHE_VERSION + ':' + APP_URL + ':' + String(suffix || 'default');
+    }
+
+    function readLearningCache_(suffix) {
+      try {
+        const raw = localStorage.getItem(learningCacheKey_(suffix));
+        if (!raw) return null;
+        const cached = JSON.parse(raw);
+        if (!cached || !cached.savedAt || !cached.data) return null;
+        if (Date.now() - Number(cached.savedAt) > LEARNING_PAGE_CACHE_MAX_AGE) return null;
+        return cached.data;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function writeLearningCache_(suffix, data) {
+      try {
+        localStorage.setItem(
+          learningCacheKey_(suffix),
+          JSON.stringify({ savedAt: Date.now(), data: data })
+        );
+      } catch (e) {}
+    }
+
+    function applyLearningData_(data) {
+      appData = data || { settings: {}, sources: [], types: [], areas: [] };
+      applySettings();
+      fillAreaFilter(appData.areas);
+      fillFilters();
+      applyFilters();
+      updateStats();
+    }
+
+    function renderLearningSheetOptions_(items, selectedSpreadsheetId) {
+      const select = document.getElementById('learningSheetSelect');
+      if (!select) return;
+      const list = Array.isArray(items) ? items : [];
+      if (!list.length) {
+        select.innerHTML = '<option value="">ไม่พบรายการ</option>';
+        return;
+      }
+      select.innerHTML = list.map(function(item) {
+        return '<option value="' + escAttr(item.spreadsheetId) + '">' + esc(item.name) + '</option>';
+      }).join('');
+      select.value = String(selectedSpreadsheetId || list[0].spreadsheetId || '');
+    }
+
+    function loadLearningBootstrap() {
+      const requestedArea = String(
+        new URLSearchParams(window.location.search).get('area') || ''
+      ).trim();
+      const bootstrapKey = 'bootstrap:' + requestedArea;
+      const cached = readLearningCache_(bootstrapKey);
+      let renderedCache = false;
+
+      if (cached && cached.success === true) {
+        currentSpreadsheetId = String(cached.currentSpreadsheetId || '').trim();
+        renderLearningSheetOptions_(cached.items, currentSpreadsheetId);
+        applyLearningData_(cached);
+        setLoading(false);
+        renderedCache = true;
+      } else {
+        setLoading(true);
+      }
+
+      jsonpRequest(
+        'learningBootstrap',
+        { area: requestedArea, v: '3' },
+        function(result) {
+          const items = Array.isArray(result.items) ? result.items : [];
+          currentSpreadsheetId = String(result.currentSpreadsheetId || (items[0] && items[0].spreadsheetId) || '').trim();
+          renderLearningSheetOptions_(items, currentSpreadsheetId);
+          applyLearningData_(result);
+          writeLearningCache_(bootstrapKey, result);
+          if (currentSpreadsheetId) writeLearningCache_('data:' + currentSpreadsheetId, result);
+          setLoading(false);
+        },
+        function(error) {
+          // compatibility fallback: หาก deployment ฝั่ง Apps Script ยังเป็นรุ่นเก่า ให้ใช้ API เดิม
+          if (!renderedCache) {
+            loadLearningSheetOptions()
+              .then(function() { loadPublicData(); })
+              .catch(function(fallbackError) { showError(fallbackError || error); });
+          }
+        }
+      );
+    }
+
+document.addEventListener("DOMContentLoaded", () => {
+  bindEvents();
+  loadLearningBootstrap();
 });
 function bindEvents() {
   ['searchInput', 'areaFilter', 'categoryFilter'].forEach(id => {
@@ -1671,39 +1803,33 @@ function fillAreaFilter(areas) {
     `).join('');
 }
 function loadPublicData() {
-
   if (!currentSpreadsheetId) return;
 
-  setLoading(true);
+  const cacheSuffix = 'data:' + currentSpreadsheetId;
+  const cached = readLearningCache_(cacheSuffix);
+  let renderedCache = false;
+
+  if (cached && cached.success === true) {
+    applyLearningData_(cached);
+    setLoading(false);
+    renderedCache = true;
+  } else {
+    setLoading(true);
+  }
 
   jsonpRequest(
     'learningBox',
-
-    {
-      spreadsheetId: currentSpreadsheetId
-    },
-
+    { spreadsheetId: currentSpreadsheetId, v: '3' },
     function(data) {
-
-      appData = data || {
-        settings: {},
-        sources: [],
-        types: [],
-        areas: []
-      };
-
-      applySettings();
-      fillAreaFilter(appData.areas);
-      fillFilters();
-      applyFilters();
-      updateStats();
-
+      applyLearningData_(data);
+      writeLearningCache_(cacheSuffix, data);
       setLoading(false);
     },
-
     function(error) {
-      setLoading(false);
-      showError(error);
+      if (!renderedCache) {
+        setLoading(false);
+        showError(error);
+      }
     }
   );
 }
@@ -1712,10 +1838,10 @@ function loadPublicData() {
       const s = appData.settings || {};
       document.documentElement.style.setProperty('--primary', s.primary_color || '#2563eb');
       document.getElementById('siteLogo').src = s.logo_url || '';
-      document.getElementById('brandTitle').textContent = s.system_name || 'แหล่งเรียนรู้ในพื้นที่';
+      document.getElementById('brandTitle').textContent = s.system_name || 'แหล่งส่งเสริมการอ่านในชุมชน';
       document.getElementById('brandSub').textContent = s.organization || '';
-      document.getElementById('heroTitle').textContent = s.system_name || 'แหล่งเรียนรู้ในพื้นที่';
-      document.getElementById('mapTitle').textContent = s.map_title || 'แผนที่แหล่งเรียนรู้';
+      document.getElementById('heroTitle').textContent = s.system_name || 'แหล่งส่งเสริมการอ่านในชุมชน';
+      document.getElementById('mapTitle').textContent = s.map_title || 'แผนที่แหล่งส่งเสริมการอ่านในชุมชน';
       document.getElementById('mapImage').src = s.map_image_url || '';
     }
 
@@ -1737,7 +1863,7 @@ function fillFilters() {
     ].sort((a,b)=>a.localeCompare(b,"th"));
 
     categorySelect.innerHTML =
-        '<option value="">ทุกประเภทแหล่งเรียนรู้</option>' +
+        '<option value="">ทุกประเภทแหล่งส่งเสริมการอ่านในชุมชน</option>' +
         categoryList.map(item => `
             <option value="${escAttr(item)}">
                 ${esc(item)}
@@ -1883,7 +2009,7 @@ function getMarkerLabelClass(index) {
       document.getElementById('resultText').textContent = `พบ ${filteredSources.length} รายการ`;
 
       if (!filteredSources.length) {
-        box.innerHTML = '<div class="empty" style="grid-column:1/-1"><i class="fa-solid fa-magnifying-glass" style="font-size:36px"></i><h3>ไม่พบข้อมูล</h3><p>ลองเปลี่ยนคำค้นหา พื้นที่ หรือประเภทแหล่งเรียนรู้</p></div>';
+        box.innerHTML = '<div class="empty" style="grid-column:1/-1"><i class="fa-solid fa-magnifying-glass" style="font-size:36px"></i><h3>ไม่พบข้อมูล</h3><p>ลองเปลี่ยนคำค้นหา พื้นที่ หรือประเภทแหล่งส่งเสริมการอ่านในชุมชน</p></div>';
         return;
       }
 
@@ -2125,7 +2251,7 @@ function renderDetail(s) {
             style="margin-top:20px">
 
             <div class="info-row">
-              <b>เจ้าของ/ผู้ดูแลแหล่งเรียนรู้</b>
+              <b>ผู้ดูแลแหล่งส่งเสริมการอ่านในชุมชน</b>
               <span>${esc(s.manager || '-')}</span>
             </div>
 
@@ -2325,12 +2451,21 @@ function renderDetail(s) {
 
       qrBox.innerHTML = '';
 
-      new QRCode(qrBox, {
-        text: learnMoreUrl,
-        width: 190,
-        height: 190,
-        correctLevel: QRCode.CorrectLevel.H
-      });
+      ensureQrCodeLibrary_()
+        .then(function(QRCodeClass) {
+          if (!document.body.contains(qrBox)) return;
+          new QRCodeClass(qrBox, {
+            text: learnMoreUrl,
+            width: 190,
+            height: 190,
+            correctLevel: QRCodeClass.CorrectLevel.H
+          });
+        })
+        .catch(function() {
+          if (document.body.contains(qrBox)) {
+            qrBox.innerHTML = '<div style="color:#64748b;font-size:13px">ไม่สามารถสร้าง QR Code ได้</div>';
+          }
+        });
     }, 50);
   }
 }
@@ -2347,7 +2482,7 @@ function renderDetail(s) {
 
     function submitReviewForm() {
       if (!activeRating) return toast('กรุณาเลือกคะแนนความพึงพอใจ');
-      if (!activeReviewSource) return toast('ไม่พบรายการแหล่งเรียนรู้');
+      if (!activeReviewSource) return toast('ไม่พบรายการแหล่งส่งเสริมการอ่านในชุมชน');
       if (!currentSpreadsheetId) return toast('ไม่พบฐานข้อมูลของพื้นที่');
 
       setLoading(true);
@@ -2431,7 +2566,7 @@ function updateStats() {
     ? appData.types
     : [];
 
-  // จำนวนแหล่งเรียนรู้ทั้งหมด
+  // จำนวนแหล่งส่งเสริมการอ่านในชุมชนทั้งหมด
   const sourceCountEl =
     document.getElementById('sourceCount');
 
@@ -2500,10 +2635,10 @@ function updateStats() {
     }
 
     function getSessionId() {
-      let id = localStorage.getItem('learning_session_id');
+      let id = localStorage.getItem('LP360:LIBRARY:learning_session_id');
       if (!id) {
         id = 'SS-' + Date.now() + '-' + Math.random().toString(36).slice(2);
-        localStorage.setItem('learning_session_id', id);
+        localStorage.setItem('LP360:LIBRARY:learning_session_id', id);
       }
       return id;
     }
