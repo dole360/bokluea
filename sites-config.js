@@ -158,12 +158,12 @@
       STUDENT_PROFILE_EXEC_URL: 'https://script.google.com/macros/s/AKfycbw7FH9gKUL-nst1r1s5PdGMvM1s2ZX-7hzex5NJgBIJzJKEFazg9xYYW93PlojZivfBjA/exec',
       CACHE_PREFIX: 'LP360:DISTRICT:ROOT:'
     }),
-    library: Object.freeze({
+    librarylopburi1: Object.freeze({
       SITE_TYPE: 'LIBRARY',
-      SEO_TITLE: 'ห้องสมุดประชาชนรอำเภอบ่อเกลือ',
-      SEO_DESCRIPTION: 'ห้องสมุดประชาชนรอำเภอบ่อเกลือ',
-      MAIN_EXEC_URL: 'https://script.google.com/macros/s/AKfycbyGulaKAXuJd6ZMOBsktyv0N3UjoE1Hu0ha7cXpyjgGtmlA84Y09Aaf-w5tBIOOtYWz1w/exec',
-      CACHE_PREFIX: 'LP360:LIBRARY:BOKLUEA:'
+      SEO_TITLE: 'ห้องสมุดประชาชนจังหวัดลพบุรี',
+      SEO_DESCRIPTION: 'ห้องสมุดประชาชนจังหวัดลพบุรี',
+      MAIN_EXEC_URL: 'https://script.google.com/macros/s/AKfycbzWvVlV7xzUpPMpzyeyL0HVOX240IxGc-lCO6d3JMTcfw_ShAV8QhVvbCXfTrMn5P7a/exec',
+      CACHE_PREFIX: 'LP360:LIBRARY:LOPBURI1:'
     })
   });
 
