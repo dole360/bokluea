@@ -302,7 +302,7 @@ function renderSettingMenus(items) {
       icon: String(item.icon || '').trim()
     }))
     .filter(item => item.title || item.subtitle || item.icon)
-    .slice(0, 6);
+    ;
 
   if (!rows.length) {
     grid.innerHTML = '<div class="setting-menu-empty">ยังไม่มีข้อมูลเมนูใน setting!D2:F</div>';
@@ -327,17 +327,24 @@ function renderSettingMenus(items) {
       normalizedTitle === 'หลักสูตร';
     const isInnovation = normalizedTitle.includes('นวัตกรรม') ||
       normalizedTitle.includes('สื่อ/');
+    const isReport = normalizedTitle.includes('รายงานผลการปฏิบัติการ');
+    const isPlan = normalizedTitle.includes('แผนการจัดการเรียนรู้') ||
+      normalizedTitle.includes('lesson plan');
     const href = isTeam
       ? 'team.html'
       : (isBestPractice
           ? 'best_practice.html'
-          : (isCourse
-              ? 'course.html'
-              : (isReward
-                  ? 'reward.html'
-                  : (isMedia
-                      ? 'media.html'
-                      : (isInnovation ? 'innovation.html' : '')))));
+          : (isReport
+              ? 'report.html'
+              : (isPlan
+                  ? 'plan.html'
+                  : (isCourse
+                  ? 'course.html'
+                  : (isReward
+                      ? 'reward.html'
+                      : (isMedia
+                          ? 'media.html'
+                          : (isInnovation ? 'innovation.html' : '')))))));
     const tag = href ? 'a' : 'div';
     const linkAttrs = href
       ? ` href="${href}" aria-label="เปิดหน้า ${escapeHtml(item.title)}"`

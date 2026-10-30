@@ -2,7 +2,7 @@
   'use strict';
   const API_URL=window.APP_CONFIG.EXEC_URL;
   const CSS_FILES=['edit-website.css?v=20260827-2','news-manager.css?v=20260902-newsurl-optional-2','newsletter-manager.css?v=20260826-1','newsletter-overlay.css?v=20260826-3','facebook-manager.css?v=20260826-1'];
-  const JS_FILES=['edit-website.js?v=20260827-2','news-manager.js?v=20260902-newsurl-optional-2','newsletter-manager.js?v=20260826-4','facebook-manager.js?v=20260826-2'];
+  const JS_FILES=['edit-website.js?v=20260827-2','news-manager.js?v=20260922-action-icons-1','newsletter-manager.js?v=20260922-action-icons-1','facebook-manager.js?v=20260922-action-icons-1'];
   let toolsPromise=null;
   let storagePromise=null;
   const STORAGE_CACHE_KEY='LP360:DISTRICT:mysiteAdminStorageV2D15';

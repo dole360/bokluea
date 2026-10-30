@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <html lang="th">
 <head>
+  <script src="sites-config.js?v=20260930-central-2"></script>
+  <script src="site-bootstrap.js?v=20260930-isolation-2"></script>
+
   <meta charset="UTF-8">
   <script src="app-config.js?v=20260917-1"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -12,6 +15,11 @@
   <link rel="stylesheet" href="course.css?v=20260915-options-1">
   <link rel="stylesheet" href="admin-subpage.css?v=20260826-1">
   <link rel="stylesheet" href="course-manager.css?v=20260915-options-1">
+
+  <link rel="stylesheet" href="template-switcher.css?v=20260924-ui-2">
+  <script>window.LP360_TEMPLATE_SITE="amphoe";window.LP360_TEMPLATE_ADMIN_TOKEN_KEY="LP360:DISTRICT:mysiteAdminToken";</script>
+  <script src="template-switcher.js?v=20260924-popup-template1-v2"></script>
+  <link id="lpSweetAlertTemplate1Css" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
 </head>
 <body>
   <main class="course-page">
@@ -45,7 +53,7 @@
 
         <div id="courseStatus" class="course-status" role="status">
           <span class="course-spinner" aria-hidden="true"></span>
-          <span>กำลังโหลดรายการหลักสูตร...</span>
+          <span>กำลังรวบรวมรายการมาแสดง</span>
         </div>
 
         <div class="course-table-wrap">
@@ -70,7 +78,7 @@
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script src="course.js?v=20260915-options-1"></script>
   <script src="admin-subpage.js?v=20260826-1"></script>
-  <script src="course-manager.js?v=20260915-options-1"></script>
+  <script src="course-manager.js?v=20260922-action-icons-1"></script>
   <script>
   function backToHome(event) {
     if (event) event.preventDefault();

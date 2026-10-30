@@ -5,7 +5,7 @@
     window.APP_CONFIG.EXEC_URL;
   const SEARCH_PAGES = [
     'activity.html', 'best_practice.html', 'classroom.html', 'cliproom.html',
-    'contact.html', 'course.html', 'ex.html', 'innovation.html', 'learning.html',
+    'contact.html', 'course.html', 'plan.html', 'ex.html', 'innovation.html', 'learning.html',
     'media.html', 'profile.html', 'quiz.html', 'reward.html', 'shopactivity.html',
     'team.html', 'user_all.html', 'vision.html'
   ];

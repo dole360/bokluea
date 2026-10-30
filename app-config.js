@@ -1,7 +1,7 @@
-// LP360 District central configuration
-// เปลี่ยน Apps Script /exec ของเว็บไซต์อำเภอที่ไฟล์นี้เพียงจุดเดียว
-window.APP_CONFIG = Object.freeze({
-  EXEC_URL: 'https://script.google.com/macros/s/AKfycbwPHNhM5pAA6hu4laMzxQT3bg_6lh3ob-l_NB7HaH0cZQ_kbxOyXUVwCjjXRZyR87ke/exec',
-  SITE_TYPE: 'DISTRICT',
-  CACHE_PREFIX: 'LP360:DISTRICT:'
-});
+// LP360 compatibility bridge — endpoints live only in /sites-config.js
+(() => {
+  'use strict';
+  if (!window.APP_CONFIG) {
+    throw new Error('LP360: sites-config.js must be loaded before app-config.js');
+  }
+})();

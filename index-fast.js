@@ -11,7 +11,7 @@
   // - deduplicate requests
   // - limit parallel Apps Script reads to avoid cold-start congestion
   // - retry transient read failures until the connection succeeds
-  const HOMEFAST_CACHE_KEY = 'homefast-v13-first-image-20260917';
+  const HOMEFAST_CACHE_KEY = 'homefast-v15-seo-t3t4-20261004';
   const HOMEFAST_TTL = 5 * 60 * 1000;
   const HOMEFAST_STALE_TTL = 24 * 60 * 60 * 1000;
   const NETWORK_TIMEOUT = 45 * 1000;
@@ -65,6 +65,7 @@
   function optimizeHomeFastPayload(payload) {
     const root = payload && payload.data && typeof payload.data === 'object' ? payload.data : payload;
     if (!root || typeof root !== 'object') return payload;
+
 
     if (root.images) {
       root.images.brandIcon = fastImageUrl(root.images.brandIcon, 320);
@@ -524,7 +525,7 @@ async function loadWebsiteImages() {
     if (window.SiteFast) {
       result = Object.assign({ success: true }, await window.SiteFast.homePart('images'));
     } else {
-      const response = await fetch(IMAGE_API_URL, { method: 'GET', cache: 'default' });
+      const response = await fetch(IMAGE_API_URL, { method: 'GET', cache: 'no-store' });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       result = await response.json();
     }
@@ -586,7 +587,7 @@ async function loadWebsiteImages() {
           name.textContent = brandName;
         });
 
-      document.title = brandName;
+      if (!window.__LP360_SEO_TITLE) document.title = brandName;
     }
 
 if (heroOverlayUrl) {
@@ -697,7 +698,7 @@ function renderSettingMenus(items) {
       icon: String(item.icon || '').trim()
     }))
     .filter(item => item.title || item.subtitle || item.icon)
-    .slice(0, 6);
+    ;
 
   if (!rows.length) {
     grid.innerHTML = '<div class="setting-menu-empty">ยังไม่มีข้อมูลเมนูใน setting!D2:F</div>';
@@ -722,17 +723,24 @@ function renderSettingMenus(items) {
       normalizedTitle === 'หลักสูตร';
     const isInnovation = normalizedTitle.includes('นวัตกรรม') ||
       normalizedTitle.includes('สื่อ/');
+    const isReport = normalizedTitle.includes('รายงานผลการปฏิบัติการ');
+    const isPlan = normalizedTitle.includes('แผนการจัดการเรียนรู้') ||
+      normalizedTitle.includes('lesson plan');
     const href = isTeam
       ? 'team.html'
       : (isBestPractice
           ? 'best_practice.html'
-          : (isCourse
-              ? 'course.html'
-              : (isReward
-                  ? 'reward.html'
-                  : (isMedia
-                      ? 'media.html'
-                      : (isInnovation ? 'innovation.html' : '')))));
+          : (isReport
+              ? 'report.html'
+              : (isPlan
+                  ? 'plan.html'
+                  : (isCourse
+                  ? 'course.html'
+                  : (isReward
+                      ? 'reward.html'
+                      : (isMedia
+                          ? 'media.html'
+                          : (isInnovation ? 'innovation.html' : '')))))));
     const tag = href ? 'a' : 'div';
     const linkAttrs = href
       ? ` href="${href}" aria-label="เปิดหน้า ${escapeHtml(item.title)}"`
@@ -922,6 +930,10 @@ function renderSettingMenus(items) {
         role="button"
         tabindex="${index === newsIndex ? '0' : '-1'}"
         aria-label="เปิดรายละเอียด ${escapeHtml(item.title)}">
+        <div
+          class="news-slide-bg"
+          aria-hidden="true"
+          style="background-image:url('${escapeHtml(item.image)}')"></div>
         <img
           src="${escapeHtml(item.image)}"
           alt="${escapeHtml(item.title)}"
@@ -1225,9 +1237,24 @@ async function openNewsPopup(item) {
 
       enableAnnouncementLink(announcement, announcementUrl);
 
-      const hasLine = setSocial('announcementLine', contact.line);
-      const hasFacebook = setSocial('announcementFacebook', contact.facebook);
-      if (socials) socials.hidden = !(hasLine || hasFacebook);
+      // aboutPages reads N6:N8 from this site's own setting sheet.
+      // homefast on this site may omit N8, so refresh only the social links.
+      let socialContact = contact;
+      try {
+        const socialUrl = new URL(API_URL);
+        socialUrl.searchParams.set('mode', 'aboutPages');
+        const socialResponse = await fetch(socialUrl.toString(), { cache: 'no-store' });
+        if (!socialResponse.ok) throw new Error(`HTTP ${socialResponse.status}`);
+        const socialResult = await socialResponse.json();
+        if (!socialResult || socialResult.success === false) throw new Error(socialResult?.message || 'โหลดช่องทางสื่อสังคมออนไลน์ไม่สำเร็จ');
+        socialContact = socialResult.contact || contact;
+      } catch (socialError) {
+        console.warn('announcement social fallback:', socialError);
+      }
+      const hasLine = setSocial('announcementLine', socialContact.line);
+      const hasFacebook = setSocial('announcementFacebook', socialContact.facebook);
+      const hasYoutube = setSocial('announcementYoutube', socialContact.youtube);
+      if (socials) socials.hidden = !(hasLine || hasFacebook || hasYoutube);
     } catch (error) {
       console.error('loadAnnouncement error:', error);
       if (announcement) {
@@ -1250,7 +1277,7 @@ async function openNewsPopup(item) {
     window.APP_CONFIG.EXEC_URL;
   const SEARCH_PAGES = [
     'activity.html', 'best_practice.html', 'classroom.html', 'cliproom.html',
-    'contact.html', 'course.html', 'ex.html', 'innovation.html', 'learning.html',
+    'contact.html', 'course.html', 'plan.html', 'ex.html', 'innovation.html', 'learning.html',
     'media.html', 'profile.html', 'quiz.html', 'reward.html', 'shopactivity.html',
     'team.html', 'user_all.html', 'vision.html'
   ];
@@ -1404,7 +1431,7 @@ async function openNewsPopup(item) {
   'use strict';
   const API_URL=window.APP_CONFIG.EXEC_URL;
   const CSS_FILES=['edit-website.css?v=20260827-2','news-manager.css?v=20260902-newsurl-optional-2','newsletter-manager.css?v=20260826-1','newsletter-overlay.css?v=20260826-3','facebook-manager.css?v=20260826-1'];
-  const JS_FILES=['edit-website.js?v=20260827-2','news-manager.js?v=20260902-newsurl-optional-2','newsletter-manager.js?v=20260826-4','facebook-manager.js?v=20260826-2'];
+  const JS_FILES=['edit-website.js?v=20260827-2','news-manager.js?v=20260922-action-icons-1','newsletter-manager.js?v=20260922-action-icons-1','facebook-manager.js?v=20260922-action-icons-1'];
   let toolsPromise=null;
   let storagePromise=null;
   const STORAGE_CACHE_KEY='LP360:DISTRICT:mysiteAdminStorageV2D15';
@@ -1482,6 +1509,7 @@ const builtins=[
   {id:'learningSourceBox',kind:'builtin',title:'แหล่งเรียนรู้',visible:true},
   {id:'activityBox',kind:'builtin',title:'จดหมายข่าว',visible:true},
   {id:'FBpostBox',kind:'builtin',title:'Facebook',visible:true},
+  {id:'readBookTimeBox',kind:'builtin',title:'อ่านหนังสือสะสมเวลา',visible:true},
   {id:'cliproomBox',kind:'builtin',title:'หลักสูตรอบรมออนไลน์',visible:true},
   {id:'learningBaseModule',kind:'builtin',title:'ช้อปกิจกรรม',visible:true},
   {id:'buttonsection',kind:'builtin',title:'ปุ่มทางลัด',visible:true}
@@ -1513,7 +1541,9 @@ function normalize(items){
   const incoming=Array.isArray(items)?items:[];
   const out=[],seen=new Set();
   incoming.forEach(raw=>{const item=normalizeItem(raw);if(item&&!seen.has(item.id)){seen.add(item.id);out.push(item)}});
-  builtins.forEach(base=>{if(!seen.has(base.id))out.push({...base})});
+  builtins.forEach(base=>{if(seen.has(base.id))return;out.push({...base})});
+  const rb=out.findIndex(item=>item.id==='readBookTimeBox');
+  if(rb>=0){const [item]=out.splice(rb,1);const cp=out.findIndex(x=>x.id==='cliproomBox');if(cp>=0)out.splice(cp,0,item);else out.push(item)}
   return out;
 }
 async function getLayout(){
@@ -1797,46 +1827,27 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
     return String(value == null ? '' : value).trim();
   }
 
-  function setImage(imageId, wrapId, url) {
-    const image = document.getElementById(imageId);
-    const wrap = wrapId ? document.getElementById(wrapId) : image;
-    if (!image) return;
-
-    const value = text(url);
-    if (!value) {
-      image.removeAttribute('src');
-      if (wrap) wrap.hidden = true;
-      return;
-    }
-
-    image.onload = () => {
-      if (wrap) wrap.hidden = false;
-    };
-    image.onerror = () => {
-      image.removeAttribute('src');
-      if (wrap) wrap.hidden = true;
-    };
-    image.src = value;
-  }
-
   function renderStudentLoginDesign(data) {
     data = data || {};
 
-    const systemName = document.getElementById('studentServicesSystemName');
-    const organization = document.getElementById('studentServicesOrganization');
+    const title = document.getElementById('studentServicesLoginTitle');
+    const subtitle = document.getElementById('studentServicesLoginSubtitle');
+    const photo = document.getElementById('studentServicesLoginPhoto');
+    const logo = document.getElementById('studentServicesLoginLogo');
 
-    if (systemName) {
-      systemName.textContent = text(data.systemName) || 'ระบบช่วยเหลือผู้เรียน';
-    }
-    if (organization) {
-      organization.textContent = text(data.organization);
-      organization.hidden = !text(data.organization);
-    }
+    const titleText = text(data.title || data.systemName) || 'ระบบช่วยเหลือผู้เรียน';
+    const subtitleText = text(data.subtitle || data.organization);
+    const photoUrl = text(data.photo || data.banner);
 
-    // design_page!C2 = โลโก้ (ตำแหน่ง 1)
-    setImage('studentServicesLogo', 'studentServicesLogoWrap', data.logo);
-    // design_page!C5 = ภาพด้านบน (ตำแหน่ง 2)
-    setImage('studentServicesBanner', null, data.banner);
+    if (title) title.textContent = titleText;
+    if (subtitle) subtitle.textContent = subtitleText;
+
+    if (photoUrl && photo) photo.src = photoUrl;
+
+    if (logo && text(data.logo)) {
+      logo.src = text(data.logo);
+      logo.hidden = false;
+    }
   }
 
   async function loadStudentLoginDesign() {
@@ -1859,12 +1870,17 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 
 /* ===== profile-config.js ===== */
 window.STUDENT_PROFILE_WEB_APP_URL =
-  'https://script.google.com/macros/s/AKfycbzXgrkVVpdpVYvg0pZnMY7S4RhAinhmX5jXeLwe32Yh8yc32wg7lPa3fZB5Oi06zIMe/exec';
+  (window.APP_CONFIG && window.APP_CONFIG.STUDENT_PROFILE_EXEC_URL) || '';
 
 
 /* ===== student-profile-login.js ===== */
 (() => {
   'use strict';
+
+  let isSearching = false;
+  let autoSearchTimer = 0;
+  let lastAutoRollno = '';
+  let activeResultMessageHandler = null;
 
   function showMessage(options) {
     if (window.Swal) return Swal.fire(options);
@@ -1872,12 +1888,309 @@ window.STUDENT_PROFILE_WEB_APP_URL =
     return Promise.resolve();
   }
 
-  async function login(event) {
-    event.preventDefault();
+  function showSearching(rollno) {
+    if (!window.Swal) return;
+    Swal.fire({
+      title: 'กำลังค้นหาข้อมูลนักศึกษา',
+      html: `รหัสนักศึกษา <strong>${escapeHtml(rollno)}</strong><br><small>กรุณารอสักครู่...</small>`,
+      allowOutsideClick: false,
+      allowEscapeKey: false,
+      showConfirmButton: false,
+      didOpen: () => Swal.showLoading()
+    });
+  }
+
+  function escapeHtml(value) {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  function setTextColor(element, value) {
+    const color = String(value || '').trim();
+    if (!element || !color) return;
+    try {
+      if (window.CSS && CSS.supports && !CSS.supports('color', color)) return;
+    } catch (_) {}
+    element.style.color = color;
+  }
+
+  function applyLoginCardConfig(config) {
+    const data = config || {};
+    const title = document.getElementById('studentServicesLoginTitle');
+    const subtitle = document.getElementById('studentServicesLoginSubtitle');
+    const photo = document.getElementById('studentServicesLoginPhoto');
+    const logo = document.getElementById('studentServicesLoginLogo');
+
+    // เว็บไซต์อำเภอยังคงใช้ข้อมูลเดิมจาก design_page:
+    // systemName = C3, organization = C4, banner = C5, logo = C2
+    const titleText = data.title || data.systemName || 'ระบบช่วยเหลือผู้เรียน';
+    const subtitleText = data.subtitle || data.organization || '';
+    const photoUrl = data.photo || data.banner || '';
+
+    if (title) title.textContent = String(titleText);
+    if (subtitle) subtitle.textContent = String(subtitleText);
+    setTextColor(title, data.titleColor);
+    setTextColor(subtitle, data.subtitleColor);
+
+    if (photo && photoUrl) {
+      const nextPhotoUrl = String(photoUrl).trim();
+      if (nextPhotoUrl) {
+        photo.style.visibility = 'hidden';
+        const preload = new Image();
+        preload.onload = () => {
+          photo.src = nextPhotoUrl;
+          photo.style.visibility = 'visible';
+        };
+        preload.onerror = () => {
+          photo.removeAttribute('src');
+          photo.style.visibility = 'hidden';
+        };
+        preload.src = nextPhotoUrl;
+      }
+    }
+    if (logo && data.logo) {
+      logo.src = String(data.logo);
+      logo.hidden = false;
+    }
+  }
+
+  async function loadLoginCardConfig() {
+    try {
+      if (!window.SiteFast || typeof window.SiteFast.getHomeFast !== 'function') return;
+      const result = await window.SiteFast.getHomeFast();
+      const data = result?.data || result || {};
+      if (data.studentLogin) applyLoginCardConfig(data.studentLogin);
+    } catch (error) {
+      console.warn('student login card config:', error);
+    }
+  }
+
+  function getStudentWebAppUrl() {
+    return String(window.STUDENT_PROFILE_WEB_APP_URL || '').trim();
+  }
+
+  function removeStudentResultFrame() {
+    if (activeResultMessageHandler) {
+      window.removeEventListener('message', activeResultMessageHandler);
+      activeResultMessageHandler = null;
+    }
+
+    const overlay = document.getElementById('studentServicesResultFrame');
+    if (overlay) overlay.remove();
+
+    document.documentElement.classList.remove('student-result-open');
+    document.body.classList.remove('student-result-open');
+  }
+
+  function returnToStudentSearch() {
+    removeStudentResultFrame();
+
+    const input = document.getElementById('studentServicesId');
+    if (input) {
+      input.value = '';
+      input.focus();
+    }
+
+    lastAutoRollno = '';
+
+    const section = document.getElementById('studentServicesBox');
+    if (section) {
+      section.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }
+
+  function prepareStudentResultFrame(rollno) {
+    const webAppUrl = getStudentWebAppUrl();
+    if (!webAppUrl) {
+      return Promise.reject(new Error('ยังไม่ได้กำหนด URL ของ Student Service Web App'));
+    }
+
+    removeStudentResultFrame();
+
+    // สร้าง iframe แบบซ่อนก่อน เพื่อให้ผู้ใช้ยังเห็น popup "กำลังค้นหา"
+    // จนกว่า Web App จะยืนยันว่า showResult() สร้างหน้าผลลัพธ์เสร็จแล้ว
+    const overlay = document.createElement('div');
+    overlay.id = 'studentServicesResultFrame';
+    overlay.setAttribute('aria-label', 'ผลข้อมูลนักศึกษา');
+    overlay.style.cssText = [
+      'position:fixed',
+      'inset:0',
+      'z-index:2147483000',
+      'width:100vw',
+      'height:100vh',
+      'background:#fff',
+      'overflow:hidden',
+      'visibility:hidden',
+      'opacity:0',
+      'pointer-events:none',
+      'transition:opacity .12s ease'
+    ].join(';');
+
+    const frame = document.createElement('iframe');
+    frame.id = 'studentServicesWebAppFrame';
+    frame.title = 'ข้อมูลนักศึกษา';
+    frame.style.cssText = 'display:block;width:100%;height:100%;border:0;background:#fff;';
+    frame.setAttribute('allow', 'fullscreen');
+    frame.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+
+    const url = new URL(webAppUrl);
+    url.searchParams.set('rollno', rollno);
+    url.searchParams.set('autologin', '1');
+    url.searchParams.set('_github', Date.now().toString());
+    frame.src = url.toString();
+
+    // ปุ่ม Home ของฝั่ง GitHub แสดงทับด้านบนของหน้าผลลัพธ์
+    // กดแล้วกลับ index.html ในแท็บเดิม โดยไม่ย้อนเข้า login_box ของ Web App
+    const homeButton = document.createElement('button');
+    homeButton.id = 'studentServicesHomeButton';
+    homeButton.type = 'button';
+    homeButton.textContent = 'Home';
+    homeButton.setAttribute('aria-label', 'กลับหน้าหลัก');
+    homeButton.style.cssText = [
+      'position:absolute',
+      'top:max(10px, env(safe-area-inset-top))',
+      'left:50%',
+      'transform:translateX(-50%)',
+      'z-index:10',
+      'min-width:104px',
+      'height:42px',
+      'padding:0 22px',
+      'border:1px solid rgba(0,0,0,.10)',
+      'border-radius:999px',
+      'background:rgba(255,255,255,.96)',
+      'color:#24324a',
+      'font:700 15px/1 system-ui,-apple-system,"Segoe UI",sans-serif',
+      'box-shadow:0 5px 18px rgba(0,0,0,.16)',
+      'cursor:pointer',
+      '-webkit-tap-highlight-color:transparent'
+    ].join(';');
+    homeButton.addEventListener('click', () => {
+      removeStudentResultFrame();
+      window.location.assign('index.html');
+    });
+
+    overlay.appendChild(frame);
+    overlay.appendChild(homeButton);
+    document.body.appendChild(overlay);
+
+    return new Promise((resolve, reject) => {
+      let settled = false;
+
+      const timeout = window.setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        removeStudentResultFrame();
+        reject(new Error('ระบบ Student Service ใช้เวลาตอบกลับนานเกินไป กรุณาลองใหม่'));
+      }, 60000);
+
+      const cleanupSearchOnly = () => {
+        window.clearTimeout(timeout);
+      };
+
+      const settleError = message => {
+        if (settled) return;
+        settled = true;
+        cleanupSearchOnly();
+        removeStudentResultFrame();
+        reject(new Error(message || `ไม่พบข้อมูลนักศึกษา ${rollno}`));
+      };
+
+      const onMessage = event => {
+        const data = event && event.data;
+        if (!data || typeof data !== 'object') return;
+
+        if (data.type === 'SSS_STUDENT_LOGOUT') {
+          returnToStudentSearch();
+          return;
+        }
+
+        if (data.type !== 'SSS_STUDENT_RESULT') return;
+
+        const resultRollno = String(data.rollno || '')
+          .replace(/\D/g, '')
+          .slice(0, 10);
+
+        if (resultRollno && resultRollno !== rollno) return;
+
+        if (!data.found) {
+          settleError(data.error || `ไม่พบข้อมูลนักศึกษา ${rollno}`);
+          return;
+        }
+
+        if (settled) return;
+        settled = true;
+        cleanupSearchOnly();
+
+        // Web App ส่งข้อความนี้หลัง showResult() สร้างหน้าผลลัพธ์แล้ว
+        // ค่อยเปิด iframe ตอนนี้ จึงไม่เห็นจอขาวระหว่างค้นหา
+        overlay.style.visibility = 'visible';
+        overlay.style.opacity = '1';
+        overlay.style.pointerEvents = 'auto';
+        document.documentElement.classList.add('student-result-open');
+        document.body.classList.add('student-result-open');
+
+        resolve(data);
+      };
+
+      activeResultMessageHandler = onMessage;
+      window.addEventListener('message', onMessage);
+
+      frame.addEventListener('error', () => {
+        settleError('ไม่สามารถโหลดหน้า Student Service ได้');
+      }, { once: true });
+    });
+  }
+
+  async function searchAndOpenProfile(rollno) {
+    if (isSearching) return;
+    isSearching = true;
 
     const input = document.getElementById('studentServicesId');
     const button = document.getElementById('studentServicesLoginBtn');
-    const rollno = String(input?.value || '').replace(/\D/g, '').trim().slice(0, 10);
+
+    if (input) input.value = rollno;
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'กำลังค้นหา...';
+    }
+
+    showSearching(rollno);
+
+    try {
+      await prepareStudentResultFrame(rollno);
+      if (window.Swal) Swal.close();
+      try { sessionStorage.setItem('LP360:DISTRICT:SSS_PROFILE_ROLLNO', rollno); } catch (_) {}
+    } catch (error) {
+      console.error('student result frame error:', error);
+      removeStudentResultFrame();
+      await showMessage({
+        icon: 'error',
+        title: 'ค้นหาข้อมูลไม่สำเร็จ',
+        text: error?.message || 'ไม่สามารถเชื่อมต่อระบบค้นหานักศึกษาได้',
+        confirmButtonText: 'ตกลง'
+      });
+      input?.focus();
+    } finally {
+      isSearching = false;
+      if (button) {
+        button.disabled = false;
+        button.textContent = 'LOGIN';
+      }
+    }
+  }
+
+  async function login(event) {
+    event?.preventDefault();
+
+    const input = document.getElementById('studentServicesId');
+    const rollno = String(input?.value || '')
+      .replace(/\D/g, '')
+      .trim()
+      .slice(0, 10);
 
     if (!rollno) {
       await showMessage({
@@ -1890,26 +2203,18 @@ window.STUDENT_PROFILE_WEB_APP_URL =
       return;
     }
 
-    if (input) input.value = rollno;
-    if (button) {
-      button.disabled = true;
-      button.textContent = 'กำลังเข้าสู่ระบบ...';
+    if (rollno.length !== 10) {
+      await showMessage({
+        icon: 'warning',
+        title: 'รหัสนักศึกษาไม่ครบ',
+        text: 'กรุณากรอกรหัสนักศึกษา 10 หลัก',
+        confirmButtonText: 'ตกลง'
+      });
+      input?.focus();
+      return;
     }
 
-    /*
-     * เดิมหน้านี้เรียก Apps Script แบบ JSONP เพื่อตรวจรหัสก่อน 1 รอบ
-     * แล้ว profile.html จึงเรียก Web App ซ้ำอีกรอบ ทำให้ช้าและเกิด false timeout
-     * ทั้งที่ Web App ค้นหาพบรหัสได้จริง
-     *
-     * รุ่นนี้ส่งรหัสไป profile.html ทันที แล้วให้ Web App โปรไฟล์เป็นผู้ตรวจรหัส
-     * เพียงครั้งเดียว จึงไม่มี REQUEST_TIMEOUT/JSONP ที่ตัดการทำงานกลางทาง
-     */
-    try {
-      sessionStorage.setItem('LP360:DISTRICT:SSS_PROFILE_ROLLNO', rollno);
-    } catch (_) {}
-
-    const profileUrl = `profile.html?rollno=${encodeURIComponent(rollno)}`;
-    window.location.assign(profileUrl);
+    await searchAndOpenProfile(rollno);
   }
 
   function init() {
@@ -1917,9 +2222,28 @@ window.STUDENT_PROFILE_WEB_APP_URL =
     const input = document.getElementById('studentServicesId');
 
     input?.addEventListener('input', () => {
-      input.value = input.value.replace(/\D/g, '').slice(0, 10);
+      const rollno = String(input.value || '')
+        .replace(/\D/g, '')
+        .slice(0, 10);
+      input.value = rollno;
+
+      if (autoSearchTimer) window.clearTimeout(autoSearchTimer);
+
+      if (rollno.length < 10) {
+        lastAutoRollno = '';
+        return;
+      }
+
+      if (rollno === lastAutoRollno || isSearching) return;
+      lastAutoRollno = rollno;
+
+      autoSearchTimer = window.setTimeout(() => {
+        searchAndOpenProfile(rollno);
+      }, 250);
     });
+
     form?.addEventListener('submit', login);
+    loadLoginCardConfig();
   }
 
   if (document.readyState === 'loading') {
@@ -1939,14 +2263,14 @@ window.STUDENT_PROFILE_WEB_APP_URL =
     window.APP_CONFIG.EXEC_URL;
 
   const LEVELS = ['ประถม', 'ม.ต้น', 'ม.ปลาย'];
-  const MEDALS = ['🥇1', '🥈2', '🥉3'];
-  const CACHE_KEY = 'LP360:DISTRICT:studentServiceTop3:v1';
+  const CACHE_KEY = 'LP360:DISTRICT:studentServiceTop3:v9-quiz-avg-score-all';
   const CACHE_AGE = 5 * 60 * 1000;
   const AUTO_ROTATE_DELAY = 4000;
   let rankingData = null;
   let autoRotateTimer = null;
   let activeLevelIndex = 0;
   let autoRotateStoppedByUser = false;
+  let autoRotatePausedByHover = false;
 
   const escapeHtml = value => String(value ?? '')
     .replaceAll('&', '&amp;')
@@ -1954,6 +2278,21 @@ window.STUDENT_PROFILE_WEB_APP_URL =
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#039;');
+
+  function displayFirstName(fullName) {
+    const name = String(fullName ?? '').trim().replace(/\s+/g, ' ');
+    if (!name) return '';
+
+    const parts = name.split(' ');
+    if (parts.length <= 1) return name;
+
+    // รองรับนามสกุลลักษณะ "ณ เชียงใหม่" โดยตัดทั้งส่วนสกุลออก
+    if (parts.length >= 3 && parts[parts.length - 2] === 'ณ') {
+      return parts.slice(0, -2).join(' ') || parts[0];
+    }
+
+    return parts.slice(0, -1).join(' ');
+  }
 
   function readCache() {
     try {
@@ -1972,6 +2311,34 @@ window.STUDENT_PROFILE_WEB_APP_URL =
     } catch (_) {}
   }
 
+  function renderPerson(row, rank, position, type) {
+    if (!row) {
+      return `<div class="student-service-podium-person is-empty ${position}" aria-hidden="true"></div>`;
+    }
+
+    const fullName = String(row.fullName || row.teacher || '').trim();
+    const displayName = String(row.displayName || '').trim() || displayFirstName(fullName);
+    const photoUrl = String(row.photoUrl || '').trim();
+    const avgScoreNumber = Number(row.avgScore);
+    const valueText = type === 'quiz'
+      ? (Number.isFinite(avgScoreNumber) ? avgScoreNumber.toFixed(1) : '—')
+      : `${Number(row.percent || 0).toFixed(2)}%`;
+    const photo = photoUrl
+      ? `<img class="student-service-podium-photo" src="${escapeHtml(photoUrl)}" alt="รูป ${escapeHtml(fullName || displayName)}" loading="lazy" decoding="async"><span class="student-service-podium-fallback" hidden aria-hidden="true"><i class="fa-solid fa-user"></i></span>`
+      : `<span class="student-service-podium-fallback" aria-hidden="true"><i class="fa-solid fa-user"></i></span>`;
+
+    return `
+      <div class="student-service-podium-person rank-${rank} ${position}">
+        <div class="student-service-podium-avatar-wrap">
+          <span class="student-service-podium-rank">${rank}</span>
+          <div class="student-service-podium-avatar">${photo}</div>
+        </div>
+        <div class="student-service-podium-name">${escapeHtml(displayName)}</div>
+        <div class="student-service-podium-percent">${valueText}</div>
+      </div>
+    `;
+  }
+
   function renderCard(card, level) {
     const type = card.dataset.rankingType;
     const ranking = card.querySelector('.student-service-ranking');
@@ -1986,21 +2353,40 @@ window.STUDENT_PROFILE_WEB_APP_URL =
     });
 
     if (!rows.length) {
-      ranking.innerHTML = '<span class="student-service-ranking-status">ยังไม่มีข้อมูล</span>';
+      ranking.innerHTML = `
+        <div class="student-service-slide-level">${escapeHtml(level)}</div>
+        <span class="student-service-ranking-status">ยังไม่มีข้อมูล</span>
+      `;
       return;
     }
 
-    ranking.innerHTML = rows.map((row, index) => `
-      <span title="${escapeHtml(row.teacher)}">
-        ${MEDALS[index]} &nbsp;${escapeHtml(row.teacher)}
-      </span>
-      <b title="${Number(row.percent || 0).toFixed(2)}%">
-        ${Number(row.percent || 0).toFixed(2)}%
-      </b>
-    `).join('');
+    const rank1 = rows.find(row => Number(row.rank) === 1) || rows[0] || null;
+    const rank2 = rows.find(row => Number(row.rank) === 2) || rows[1] || null;
+    const rank3 = rows.find(row => Number(row.rank) === 3) || rows[2] || null;
+
+    ranking.innerHTML = `
+      <div class="student-service-slide-level">${escapeHtml(level)}</div>
+      <div class="student-service-podium" aria-label="3 ลำดับสูงสุด ระดับ ${escapeHtml(level)}">
+        ${renderPerson(rank2, 2, 'podium-left', type)}
+        ${renderPerson(rank1, 1, 'podium-center', type)}
+        ${renderPerson(rank3, 3, 'podium-right', type)}
+      </div>
+    `;
+  }
+
+  function updateTop3Organization() {
+    const target = document.getElementById('studentServiceTop3Organization');
+    if (!target) return;
+    const organizationName = String(
+      rankingData && rankingData.organizationName
+        ? rankingData.organizationName
+        : ''
+    ).trim();
+    target.textContent = organizationName || '...';
   }
 
   function renderAll(level) {
+    updateTop3Organization();
     document.querySelectorAll('[data-ranking-type]').forEach(card => {
       const active = card.querySelector('.student-service-tabs .is-active');
       renderCard(card, level || (active ? active.dataset.level : LEVELS[0]));
@@ -2016,12 +2402,31 @@ window.STUDENT_PROFILE_WEB_APP_URL =
 
   function startAutoRotate() {
     stopAutoRotate();
-    if (autoRotateStoppedByUser || !rankingData) return;
+    if (autoRotateStoppedByUser || autoRotatePausedByHover || !rankingData) return;
 
     autoRotateTimer = window.setInterval(() => {
       activeLevelIndex = (activeLevelIndex + 1) % LEVELS.length;
       renderAll(LEVELS[activeLevelIndex]);
     }, AUTO_ROTATE_DELAY);
+  }
+
+  function bindRankingHoverPause() {
+    document.querySelectorAll(
+      '.student-service-card[data-ranking-type="quiz"], .student-service-card[data-ranking-type="worksheet"]'
+    ).forEach(card => {
+      if (card.dataset.rankingHoverPauseBound === '1') return;
+      card.dataset.rankingHoverPauseBound = '1';
+
+      card.addEventListener('mouseenter', () => {
+        autoRotatePausedByHover = true;
+        stopAutoRotate();
+      });
+
+      card.addEventListener('mouseleave', () => {
+        autoRotatePausedByHover = false;
+        startAutoRotate();
+      });
+    });
   }
 
   function showError(message) {
@@ -2050,7 +2455,7 @@ window.STUDENT_PROFILE_WEB_APP_URL =
         result = await window.SiteFast.fetchMode(
           'studentServiceTop3',
           {},
-          { key: 'studentServiceTop3:v2', ttl: CACHE_AGE }
+          { key: 'studentServiceTop3:v9-quiz-avg-score-all', ttl: CACHE_AGE }
         );
       } else {
         const separator = STUDENT_SERVICE_API_URL.includes('?') ? '&' : '?';
@@ -2065,6 +2470,16 @@ window.STUDENT_PROFILE_WEB_APP_URL =
         throw new Error('รูปแบบข้อมูลไม่ถูกต้อง');
       }
 
+      const quizRows = LEVELS.flatMap(level =>
+        result.quiz && Array.isArray(result.quiz[level]) ? result.quiz[level] : []
+      );
+      const missingAvgScore = quizRows.some(row =>
+        row && !Object.prototype.hasOwnProperty.call(row, 'avgScore')
+      );
+      if (missingAvgScore) {
+        throw new Error('Apps Script อำเภอยังไม่ส่ง avgScore กรุณา Deploy เวอร์ชันใหม่');
+      }
+
       rankingData = result;
       writeCache(result);
       activeLevelIndex = 0;
@@ -2076,6 +2491,7 @@ window.STUDENT_PROFILE_WEB_APP_URL =
     }
   }
 
+  // คง event เดิมไว้: หากในอนาคตเปิดแท็บกลับมา ผู้ใช้ยังเลือกชั้นเองได้
   document.addEventListener('click', event => {
     const tab = event.target.closest('.student-service-tabs button');
     if (!tab) return;
@@ -2087,7 +2503,17 @@ window.STUDENT_PROFILE_WEB_APP_URL =
     if (rankingData) renderAll(LEVELS[activeLevelIndex]);
   });
 
+  // รูปเสีย/ไม่มีสิทธิ์เข้าถึง: แสดงไอคอนผู้ใช้แทน โดยไม่ทำให้ ranking หาย
+  document.addEventListener('error', event => {
+    const img = event.target;
+    if (!(img instanceof HTMLImageElement) || !img.classList.contains('student-service-podium-photo')) return;
+    img.hidden = true;
+    const fallback = img.nextElementSibling;
+    if (fallback) fallback.hidden = false;
+  }, true);
+
   function scheduleRankings() {
+    bindRankingHoverPause();
     if (window.SiteFast) window.SiteFast.whenNear('studentServicesBox', loadRankings, '700px 0px');
     else if ('requestIdleCallback' in window) requestIdleCallback(loadRankings, { timeout: 2200 });
     else setTimeout(loadRankings, 500);
@@ -2099,7 +2525,6 @@ window.STUDENT_PROFILE_WEB_APP_URL =
     scheduleRankings();
   }
 })();
-
 
 /* ===== user-box.js ===== */
 (() => {
@@ -2506,7 +2931,7 @@ function areaCard(area) {
     }
 
     if (window.SiteFast) {
-      grid.innerHTML = '<div class="lsb-loading">กำลังโหลดแหล่งเรียนรู้...</div>';
+      grid.innerHTML = '<div class="lsb-loading section-loading-with-spinner"><span class="section-loading-spinner" aria-hidden="true"></span>กำลังโหลดแหล่งเรียนรู้...</div>';
       window.SiteFast.fetchMode('learningAreas', {}, { key: 'learning-areas-v1', ttl: 300000 })
         .then(window.receiveLearningAreas)
         .catch(error => {
@@ -3229,7 +3654,7 @@ state.items = (result.activities || [])
         const delay = retryDelay(attempt);
         console.warn(`Cliproom resolver retry #${attempt}:`, error);
         if (!courses.length) {
-          track.innerHTML = `<div class="cliproom-loading">กำลังเชื่อมต่อระบบหลักสูตร...<br><small>ลองใหม่อัตโนมัติ ครั้งที่ ${attempt}</small></div>`;
+          track.innerHTML = `<div class="cliproom-loading"><span class="cliproom-spinner"></span><span>กำลังเชื่อมต่อระบบหลักสูตร...<br><small>ลองใหม่อัตโนมัติ ครั้งที่ ${attempt}</small></span></div>`;
         }
         await waitRetry(delay);
       }
@@ -3373,7 +3798,7 @@ state.items = (result.activities || [])
         const delay = retryDelay(attempt);
         console.warn(`Cliproom catalog retry #${attempt}:`, error);
         if (!courses.length) {
-          track.innerHTML = `<div class="cliproom-loading">กำลังโหลดรายการหลักสูตร...<br><small>เชื่อมต่อไม่สำเร็จ ระบบจะลองใหม่อัตโนมัติ ครั้งที่ ${attempt}</small></div>`;
+          track.innerHTML = `<div class="cliproom-loading"><span class="cliproom-spinner"></span><span>กำลังโหลดรายการหลักสูตร...<br><small>เชื่อมต่อไม่สำเร็จ ระบบจะลองใหม่อัตโนมัติ ครั้งที่ ${attempt}</small></span></div>`;
         }
         await waitRetry(delay);
       }

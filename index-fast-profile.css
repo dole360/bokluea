@@ -1245,3 +1245,103 @@ a.setting-menu-item:hover { transform: translateY(-3px); }
   .setting-menu-title { font-size: 16px; }
 }
 
+
+/* =========================================================
+   Admin news-info row: restore original layout only in admin mode
+   Scope is intentionally limited to .admin-news-info-row while editing.
+   ========================================================= */
+body.admin-edit-mode .admin-news-info-row {
+  display: grid !important;
+  grid-template-columns: minmax(220px, 255px) minmax(0, 1fr) !important;
+  grid-template-rows: auto auto !important;
+  align-items: start !important;
+  column-gap: 22px !important;
+  row-gap: 18px !important;
+  width: 100% !important;
+  margin-top: 24px !important;
+}
+
+body.admin-edit-mode .admin-news-info-row > .admin-news-info-note {
+  grid-column: 1 / -1 !important;
+  grid-row: 1 !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+  margin: 0 !important;
+}
+
+body.admin-edit-mode .admin-news-info-row > #bossBox {
+  grid-column: 1 !important;
+  grid-row: 2 !important;
+  align-self: start !important;
+  justify-self: stretch !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 255px !important;
+  height: auto !important;
+  margin: 0 auto !important;
+  position: relative !important;
+  inset: auto !important;
+  transform: none !important;
+}
+
+body.admin-edit-mode .admin-news-info-row > #studentBox {
+  grid-column: 2 !important;
+  grid-row: 2 !important;
+  align-self: start !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  height: auto !important;
+  margin: 0 !important;
+  padding: 12px 8px !important;
+  position: relative !important;
+  inset: auto !important;
+  transform: none !important;
+  overflow: visible !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+body.admin-edit-mode .admin-news-info-row #settingMenuGrid {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  grid-auto-flow: row !important;
+  align-items: start !important;
+  justify-items: stretch !important;
+  gap: 22px 28px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+/* If the director box has no data, let the shortcut menu use the whole row. */
+body.admin-edit-mode .admin-news-info-row > #bossBox[hidden] + #studentBox {
+  grid-column: 1 / -1 !important;
+}
+
+@media (max-width: 1000px) {
+  body.admin-edit-mode .admin-news-info-row {
+    grid-template-columns: minmax(200px, 240px) minmax(0, 1fr) !important;
+  }
+}
+
+@media (max-width: 760px) {
+  body.admin-edit-mode .admin-news-info-row {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: auto auto auto !important;
+    gap: 16px !important;
+  }
+  body.admin-edit-mode .admin-news-info-row > #bossBox {
+    grid-column: 1 !important;
+    grid-row: 2 !important;
+    max-width: 255px !important;
+  }
+  body.admin-edit-mode .admin-news-info-row > #studentBox,
+  body.admin-edit-mode .admin-news-info-row > #bossBox[hidden] + #studentBox {
+    grid-column: 1 !important;
+    grid-row: 3 !important;
+  }
+  body.admin-edit-mode .admin-news-info-row #settingMenuGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 18px 14px !important;
+  }
+}
