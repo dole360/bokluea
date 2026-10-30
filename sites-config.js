@@ -158,13 +158,13 @@
       STUDENT_PROFILE_EXEC_URL: 'https://script.google.com/macros/s/AKfycbw7FH9gKUL-nst1r1s5PdGMvM1s2ZX-7hzex5NJgBIJzJKEFazg9xYYW93PlojZivfBjA/exec',
       CACHE_PREFIX: 'LP360:DISTRICT:ROOT:'
     }),
-    librarylopburi1: Object.freeze({
+    library: Object.freeze({
       SITE_TYPE: 'LIBRARY',
       SEO_TITLE: 'ห้องสมุดประชาชนจังหวัดลพบุรี',
       SEO_DESCRIPTION: 'ห้องสมุดประชาชนจังหวัดลพบุรี',
       MAIN_EXEC_URL: 'https://script.google.com/macros/s/AKfycbzWvVlV7xzUpPMpzyeyL0HVOX240IxGc-lCO6d3JMTcfw_ShAV8QhVvbCXfTrMn5P7a/exec',
       CACHE_PREFIX: 'LP360:LIBRARY:LOPBURI1:'
-    })
+    }),
   });
 
   function detectSiteKey() {
