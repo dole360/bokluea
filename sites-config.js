@@ -164,7 +164,7 @@
       SEO_DESCRIPTION: 'ห้องสมุดประชาชนจังหวัดลพบุรี',
       MAIN_EXEC_URL: 'https://script.google.com/macros/s/AKfycbzWvVlV7xzUpPMpzyeyL0HVOX240IxGc-lCO6d3JMTcfw_ShAV8QhVvbCXfTrMn5P7a/exec',
       CACHE_PREFIX: 'LP360:LIBRARY:LOPBURI1:'
-    })
+    }),
   });
 
   function detectSiteKey() {
